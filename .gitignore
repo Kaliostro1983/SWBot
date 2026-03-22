@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime / WhatsApp session (whatsapp-web.js)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Logs and generated state
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug / npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

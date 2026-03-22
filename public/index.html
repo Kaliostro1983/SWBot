@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Bot Control</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      margin-top: 0;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .green { background: #16a34a; color: white; }
+    .red { background: #dc2626; color: white; }
+    .blue { background: #2563eb; color: white; }
+    .orange { background: #ea580c; color: white; }
+    .gray { background: #475569; color: white; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .card {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+    .stat {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .label {
+      color: #94a3b8;
+    }
+    #statusBadge {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #334155;
+      font-weight: bold;
+    }
+    #qr {
+      max-width: 280px;
+      width: 100%;
+      border-radius: 12px;
+      background: white;
+      display: none;
+    }
+    #logs {
+      background: #020617;
+      color: #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      height: 500px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      border: 1px solid #1e293b;
+    }
+    .muted {
+      color: #94a3b8;
+      font-size: 13px;
+    }
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .stat {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>WhatsApp Bot Control Panel</h1>
+
+    <div class="toolbar">
+      <button class="green" onclick="callApi('/api/start')">Запустити чат</button>
+      <button class="gray" onclick="callApi('/api/stop')">Зупинити</button>
+      <button class="blue" onclick="callApi('/api/login')">Log-in</button>
+      <button class="orange" onclick="callApi('/api/logout')">Log-out</button>
+      <button class="red" onclick="resetSession()">Reset session</button>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Стан</h3>
+        <div style="margin-bottom: 12px;">
+          <span id="statusBadge">idle</span>
+        </div>
+
+        <div class="stat"><div class="label">Authenticated</div><div id="authenticated">-</div></div>
+        <div class="stat"><div class="label">Ready</div><div id="ready">-</div></div>
+        <div class="stat"><div class="label">QR available</div><div id="qrAvailable">-</div></div>
+        <div class="stat"><div class="label">Source chat</div><div id="sourceChat">-</div></div>
+        <div class="stat"><div class="label">Target chat</div><div id="targetChat">-</div></div>
+        <div class="stat"><div class="label">Started at</div><div id="startedAt">-</div></div>
+        <div class="stat"><div class="label">Last pulse</div><div id="lastPulseAt">-</div></div>
+        <div class="stat"><div class="label">Last event</div><div id="lastEventAt">-</div></div>
+        <div class="stat"><div class="label">Last ready</div><div id="lastReadyAt">-</div></div>
+        <div class="stat"><div class="label">Last message</div><div id="lastMessageAt">-</div></div>
+        <div class="stat"><div class="label">Last POST</div><div id="lastPostAt">-</div></div>
+        <div class="stat"><div class="label">Last send</div><div id="lastSendAt">-</div></div>
+        <div class="stat"><div class="label">Last error</div><div id="lastError">-</div></div>
+        <div class="stat"><div class="label">Disconnect reason</div><div id="lastDisconnectReason">-</div></div>
+
+        <h3>Лічильники</h3>
+        <div class="stat"><div class="label">Received</div><div id="cntReceived">0</div></div>
+        <div class="stat"><div class="label">Accepted</div><div id="cntAccepted">0</div></div>
+        <div class="stat"><div class="label">Ignored</div><div id="cntIgnored">0</div></div>
+        <div class="stat"><div class="label">Posted</div><div id="cntPosted">0</div></div>
+        <div class="stat"><div class="label">Sent</div><div id="cntSent">0</div></div>
+        <div class="stat"><div class="label">Errors</div><div id="cntErrors">0</div></div>
+      </div>
+
+      <div class="card">
+        <h3>QR / Акаунт</h3>
+        <p class="muted">Після Log-in або Reset session тут з’явиться QR, якщо потрібна нова авторизація.</p>
+        <img id="qr" alt="QR code" />
+        <div class="stat"><div class="label">Client WID</div><div id="clientWid">-</div></div>
+        <div class="stat"><div class="label">Pushname</div><div id="clientPushname">-</div></div>
+        <div class="stat"><div class="label">Platform</div><div id="clientPlatform">-</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 16px;">
+      <h3>Live log</h3>
+      <div id="logs"></div>
+    </div>
+  </div>
+
+  <script>
+    const logsEl = document.getElementById('logs');
+    const qrEl = document.getElementById('qr');
+
+    function fmt(v) {
+      return v === null || v === undefined || v === '' ? '-' : String(v);
+    }
+
+    function appendLog(item) {
+      const meta = item.meta ? ' ' + JSON.stringify(item.meta) : '';
+      logsEl.textContent += `[${item.ts}] [${item.level}] ${item.message}${meta}\n`;
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }
+
+    function clearLogs() {
+      logsEl.textContent = '';
+    }
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = fmt(value);
+    }
+
+    function renderState(s) {
+      setText('statusBadge', s.status);
+      setText('authenticated', s.authenticated);
+      setText('ready', s.ready);
+      setText('qrAvailable', s.qrAvailable);
+      setText('sourceChat', s.sourceChat);
+      setText('targetChat', s.targetChat);
+      setText('startedAt', s.startedAt);
+      setText('lastPulseAt', s.lastPulseAt);
+      setText('lastEventAt', s.lastEventAt);
+      setText('lastReadyAt', s.lastReadyAt);
+      setText('lastMessageAt', s.lastMessageAt);
+      setText('lastPostAt', s.lastPostAt);
+      setText('lastSendAt', s.lastSendAt);
+      setText('lastError', s.lastError);
+      setText('lastDisconnectReason', s.lastDisconnectReason);
+
+      setText('cntReceived', s.counters?.received ?? 0);
+      setText('cntAccepted', s.counters?.accepted ?? 0);
+      setText('cntIgnored', s.counters?.ignored ?? 0);
+      setText('cntPosted', s.counters?.posted ?? 0);
+      setText('cntSent', s.counters?.sent ?? 0);
+      setText('cntErrors', s.counters?.errors ?? 0);
+
+      setText('clientWid', s.clientInfo?.wid);
+      setText('clientPushname', s.clientInfo?.pushname);
+      setText('clientPlatform', s.clientInfo?.platform);
+
+      if (s.qrAvailable && s.qrAvailableData) {
+        qrEl.src = s.qrAvailableData;
+        qrEl.style.display = 'block';
+      } else {
+        qrEl.style.display = 'none';
+        qrEl.removeAttribute('src');
+      }
+    }
+
+    async function callApi(url) {
+      const res = await fetch(url, { method: 'POST' });
+      const data = await res.json();
+      console.log(data);
+    }
+
+    async function resetSession() {
+      const ok = confirm('Видалити сесію і вимагати новий QR?');
+      if (!ok) return;
+      await callApi('/api/reset-session');
+    }
+
+    async function initialLoad() {
+      const state = await fetch('/api/state').then(r => r.json());
+      renderState(state);
+
+      const logs = await fetch('/api/logs').then(r => r.json());
+      clearLogs();
+      for (const item of logs) appendLog(item);
+    }
+
+    function connectEvents() {
+      const es = new EventSource('/api/events');
+
+      es.addEventListener('state', (event) => {
+        renderState(JSON.parse(event.data));
+      });
+
+      es.addEventListener('log', (event) => {
+        appendLog(JSON.parse(event.data));
+      });
+
+      es.onerror = () => {
+        console.warn('SSE disconnected, retrying...');
+      };
+    }
+
+    initialLoad();
+    connectEvents();
+  </script>
+</body>
+</html>
