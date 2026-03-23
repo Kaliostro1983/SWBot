@@ -1,0 +1,40 @@
+[
+  {
+    "id": "flow_1774195501688_xuum20rr",
+    "name": "Кипарис ТЕСТ та ЧАСТОТИ РЕР",
+    "direction": "wa_wa",
+    "sourceChatIds": [
+      "120363424391416042@g.us",
+      "120363305736761346@g.us"
+    ],
+    "sourceChatId": "120363424391416042@g.us",
+    "fastapiUrl": null,
+    "targetChatId": "120363425828018712@g.us",
+    "paused": false,
+    "keywords": "*",
+    "frequencies": "",
+    "sendAttachments": true,
+    "coordinatesScreenshot": false,
+    "analysisPlugin": null,
+    "outdatedDiff": null
+  },
+  {
+    "id": "flow_1774201805108_mo8gc9zp",
+    "name": "Кипарис ТЕСТ та ЧАСТОТИ РЕР (копія)",
+    "direction": "wa_fastapi",
+    "sourceChatIds": [
+      "120363424391416042@g.us",
+      "120363305736761346@g.us"
+    ],
+    "sourceChatId": "120363424391416042@g.us",
+    "fastapiUrl": null,
+    "targetChatId": null,
+    "paused": true,
+    "keywords": "*",
+    "frequencies": "",
+    "sendAttachments": false,
+    "coordinatesScreenshot": false,
+    "analysisPlugin": null,
+    "outdatedDiff": null
+  }
+]

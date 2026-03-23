@@ -2,10 +2,12 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const axios = require('axios');
 const QRCode = require('qrcode');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const PORT = Number(process.env.PORT || 3001);
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://127.0.0.1:8000/api/ingest/whatsapp';
@@ -14,6 +16,10 @@ const TARGET_CHAT = process.env.TARGET_CHAT || '';
 const SEND_PREFIX = process.env.SEND_PREFIX || '#go';
 const SEND_DELAY_MS = Number(process.env.SEND_DELAY_MS || 2000);
 const HEADLESS = String(process.env.HEADLESS || '1') === '1';
+const PANEL_USER = String(process.env.PANEL_USER || '').trim();
+const PANEL_PASSWORD = String(process.env.PANEL_PASSWORD || '').trim();
+const SOURCE_FILTER_KEYWORDS = String(process.env.SOURCE_FILTER_KEYWORDS || '').trim();
+const SOURCE_FILTER_FREQUENCIES = String(process.env.SOURCE_FILTER_FREQUENCIES || '').trim();
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -22,13 +28,343 @@ const LOG_FILE = path.join(LOG_DIR, 'bot.log');
 const HEALTH_FILE = path.join(LOG_DIR, 'health.json');
 const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
+const DATA_DIR = path.join(ROOT_DIR, 'data');
+const FLOWS_FILE = path.join(DATA_DIR, 'flows.json');
+const VERSION_FILE = path.join(ROOT_DIR, 'VERSION');
+
+function readAppVersion() {
+  try {
+    const raw = fs.readFileSync(VERSION_FILE, 'utf8');
+    const line = raw.split(/\r?\n/)[0].trim();
+    if (line) return line;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const pkgPath = path.join(ROOT_DIR, 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    return String(pkg.version || '0.0.0').trim();
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const APP_VERSION = readAppVersion();
+
+function loadFlowsFromDisk() {
+  try {
+    if (!fs.existsSync(FLOWS_FILE)) return [];
+    const raw = fs.readFileSync(FLOWS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFlowsToDisk(list) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(FLOWS_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
+function generateFlowId() {
+  return `flow_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getSourceIds(flow) {
+  if (Array.isArray(flow.sourceChatIds) && flow.sourceChatIds.length > 0) {
+    return flow.sourceChatIds;
+  }
+  if (flow.sourceChatId) {
+    return [flow.sourceChatId];
+  }
+  return [];
+}
+
+/** Токени фільтра: розділяються комою, крапкою з комою, новим рядком або ; */
+function splitFilterTokens(s) {
+  return String(s || '')
+    .split(/[\n,;]+/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+}
+
+function filterFieldHasWildcardToken(s) {
+  return splitFilterTokens(s).some((t) => t === '*');
+}
+
+/** Якщо в будь-якому полі є токен * — не застосовуємо фільтри за текстом/частотами. */
+function flowSkipsContentFilters(flow) {
+  if (!flow) return true;
+  return (
+    filterFieldHasWildcardToken(flow.keywords) || filterFieldHasWildcardToken(flow.frequencies)
+  );
+}
+
+function textMatchesFilterTokens(rawText, fieldValue) {
+  const tokens = splitFilterTokens(fieldValue);
+  if (tokens.length === 0) return true;
+  if (tokens.some((t) => t === '*')) return true;
+  const hay = String(rawText || '').toLowerCase();
+  return tokens.some((t) => hay.includes(String(t).toLowerCase()));
+}
+
+/**
+ * Хоча б одне поле має містити токени.
+ * Лише ключові слова або лише частоти — збіг по відповідному полю.
+ * Обидва з токенами — достатньо збігу по тексту АБО по частотах (підрядки в повному тексті повідомлення).
+ */
+function passesFlowContentFilters(flow, rawMessageText) {
+  if (flowSkipsContentFilters(flow)) return true;
+  const k = String(flow.keywords || '').trim();
+  const f = String(flow.frequencies || '').trim();
+  const tokK = splitFilterTokens(k);
+  const tokF = splitFilterTokens(f);
+  if (tokK.length === 0 && tokF.length === 0) return false;
+  if (tokK.length > 0 && tokF.length === 0) {
+    return textMatchesFilterTokens(rawMessageText, k);
+  }
+  if (tokK.length === 0 && tokF.length > 0) {
+    return textMatchesFilterTokens(rawMessageText, f);
+  }
+  return (
+    textMatchesFilterTokens(rawMessageText, k) ||
+    textMatchesFilterTokens(rawMessageText, f)
+  );
+}
+
+function migrateFlowRecord(f) {
+  const out = { ...f };
+  if (!Array.isArray(out.sourceChatIds) || out.sourceChatIds.length === 0) {
+    if (out.sourceChatId) {
+      out.sourceChatIds = [out.sourceChatId];
+    } else {
+      out.sourceChatIds = [];
+    }
+  }
+  if (out.direction === 'wa_rer') {
+    out.direction = 'wa_fastapi';
+  }
+  if (!out.direction) out.direction = 'wa_fastapi';
+  if (out.keywords === undefined) out.keywords = '';
+  if (out.frequencies === undefined) out.frequencies = '';
+  if (out.sendAttachments === undefined) out.sendAttachments = false;
+  if (out.coordinatesScreenshot === undefined) out.coordinatesScreenshot = false;
+  if (out.analysisPlugin === undefined) out.analysisPlugin = null;
+  if (out.outdatedDiff === undefined) out.outdatedDiff = null;
+  if (out.paused === undefined) out.paused = false;
+  if (
+    splitFilterTokens(String(out.keywords || '')).length === 0 &&
+    splitFilterTokens(String(out.frequencies || '')).length === 0
+  ) {
+    out.keywords = '*';
+  }
+  return out;
+}
+
+function loadAndMigrateFlows() {
+  const raw = loadFlowsFromDisk();
+  let needsSave = false;
+  const migrated = raw.map((f) => {
+    const before = JSON.stringify(f);
+    const m = migrateFlowRecord(f);
+    if (before !== JSON.stringify(m)) needsSave = true;
+    return m;
+  });
+  if (needsSave && migrated.length > 0) {
+    saveFlowsToDisk(migrated);
+  }
+  return migrated;
+}
+
+/** Нова автоматизація з панелі: WA → FastAPI або WA → WhatsApp */
+function normalizeAutomation(body, existingId) {
+  const ex = existingId ? flows.find((x) => x.id === existingId) : null;
+  const name = String(body.name || '').trim();
+  let sourceChatIds = [];
+  if (Array.isArray(body.sourceChatIds)) {
+    sourceChatIds = body.sourceChatIds.map((x) => String(x).trim()).filter(Boolean);
+  } else if (body.sourceChatId) {
+    const one = String(body.sourceChatId).trim();
+    if (one) sourceChatIds = [one];
+  }
+  let paused = false;
+  if (body.paused !== undefined) {
+    paused = Boolean(body.paused);
+  } else if (existingId && ex) {
+    paused = Boolean(ex.paused);
+  }
+  const keywords =
+    body.keywords !== undefined ? String(body.keywords) : ex ? String(ex.keywords ?? '') : '';
+  const frequencies =
+    body.frequencies !== undefined
+      ? String(body.frequencies)
+      : ex
+        ? String(ex.frequencies ?? '')
+        : '';
+
+  let direction = 'wa_fastapi';
+  if (body.direction === 'wa_wa') {
+    direction = 'wa_wa';
+  } else if (body.direction === 'wa_fastapi' || body.direction === 'wa_rer') {
+    direction = 'wa_fastapi';
+  } else if (ex && ex.direction === 'wa_wa') {
+    direction = 'wa_wa';
+  }
+
+  let targetChatId = null;
+  if (direction === 'wa_wa') {
+    if (body.targetChatId !== undefined && body.targetChatId !== null) {
+      const t = String(body.targetChatId).trim();
+      targetChatId = t || null;
+    } else if (ex && ex.targetChatId) {
+      targetChatId = String(ex.targetChatId).trim() || null;
+    }
+  }
+
+  return {
+    id: existingId || generateFlowId(),
+    name,
+    direction,
+    sourceChatIds,
+    sourceChatId: sourceChatIds[0] || null,
+    fastapiUrl: null,
+    targetChatId,
+    paused,
+    keywords,
+    frequencies,
+    sendAttachments:
+      body.sendAttachments !== undefined ? Boolean(body.sendAttachments) : ex
+        ? Boolean(ex.sendAttachments)
+        : false,
+    coordinatesScreenshot:
+      body.coordinatesScreenshot !== undefined
+        ? Boolean(body.coordinatesScreenshot)
+        : ex
+          ? Boolean(ex.coordinatesScreenshot)
+          : false,
+    analysisPlugin:
+      body.analysisPlugin !== undefined ? body.analysisPlugin : ex ? ex.analysisPlugin : null,
+    outdatedDiff: body.outdatedDiff !== undefined ? body.outdatedDiff : ex ? ex.outdatedDiff : null
+  };
+}
+
+function validateAutomation(f, allFlows, excludeId) {
+  if (!f.name) return 'Вкажіть назву автоматизації';
+  if (!f.sourceChatIds || f.sourceChatIds.length === 0) {
+    return 'Оберіть хоча б один чат-джерело';
+  }
+  if (f.direction === 'wa_wa') {
+    const tid = String(f.targetChatId || '').trim();
+    if (!tid) return 'Оберіть цільовий чат для напрямку WA → WhatsApp';
+    if (f.sourceChatIds.some((sid) => sid === tid)) {
+      return 'Цільовий чат не може збігатися з чатом-джерелом';
+    }
+  }
+  const hasKTok = splitFilterTokens(String(f.keywords || '')).length > 0;
+  const hasFTok = splitFilterTokens(String(f.frequencies || '')).length > 0;
+  if (!hasKTok && !hasFTok) {
+    return 'Заповніть хоча б одне поле: ключові слова або частоти. Окремий рядок * — пропускати все без фільтрів.';
+  }
+  if (!f.paused) {
+    const others = allFlows.filter((x) => x.id !== excludeId);
+    for (const sid of f.sourceChatIds) {
+      const conflict = others.find((o) => !o.paused && getSourceIds(o).includes(sid));
+      if (conflict) {
+        return `Чат уже в активній автоматизації «${conflict.name}» (на паузі — можна дублювати)`;
+      }
+    }
+  }
+  return null;
+}
+
+function isFastapiDirection(flow) {
+  return flow.direction === 'wa_fastapi' || flow.direction === 'wa_rer';
+}
+
+let flows = [];
+
+const panelSessions = new Map();
+
+function isPanelAuthEnabled() {
+  return Boolean(PANEL_USER && PANEL_PASSWORD);
+}
+
+function panelAuthMiddleware(req, res, next) {
+  if (!isPanelAuthEnabled()) {
+    return next();
+  }
+  const p = req.path.split('?')[0];
+  if (p === '/login.html') return next();
+  if (p === '/favicon.ico') return next();
+  if (p === '/api/panel-auth/login' && req.method === 'POST') return next();
+  if (p === '/api/panel-auth/logout' && req.method === 'POST') return next();
+  if (p === '/api/panel-auth/me') return next();
+
+  const tok = req.cookies?.wb_panel;
+  if (tok && panelSessions.has(tok)) {
+    return next();
+  }
+
+  if (p.startsWith('/api/')) {
+    return res.status(401).json({
+      ok: false,
+      code: 'panel_auth',
+      message: 'Потрібен вхід у панель керування'
+    });
+  }
+
+  return res.redirect(302, '/login.html');
+}
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+flows = loadAndMigrateFlows();
 
 const app = express();
+app.use(cookieParser());
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(PUBLIC_DIR));
+app.use(panelAuthMiddleware);
+
+app.post('/api/panel-auth/login', (req, res) => {
+  const { user, password } = req.body || {};
+  if (!isPanelAuthEnabled()) {
+    return res.json({ ok: true, authDisabled: true });
+  }
+  if (user === PANEL_USER && password === PANEL_PASSWORD) {
+    const token = crypto.randomBytes(32).toString('hex');
+    panelSessions.set(token, { created: Date.now() });
+    res.cookie('wb_panel', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 3600 * 1000
+    });
+    return res.json({ ok: true });
+  }
+  return res.status(401).json({ ok: false, message: 'Невірний логін або пароль' });
+});
+
+app.post('/api/panel-auth/logout', (req, res) => {
+  const tok = req.cookies?.wb_panel;
+  if (tok) panelSessions.delete(tok);
+  res.clearCookie('wb_panel');
+  res.json({ ok: true });
+});
+
+app.get('/api/panel-auth/me', (req, res) => {
+  const ver = { version: APP_VERSION };
+  if (!isPanelAuthEnabled()) {
+    return res.json({ ok: true, auth: true, authDisabled: true, ...ver });
+  }
+  const tok = req.cookies?.wb_panel;
+  res.json({
+    ok: true,
+    auth: Boolean(tok && panelSessions.has(tok)),
+    authDisabled: false,
+    ...ver
+  });
+});
 
 let client = null;
 let isStarting = false;
@@ -126,7 +462,15 @@ function getPublicState() {
     lastError: state.lastError,
     lastDisconnectReason: state.lastDisconnectReason,
     counters: state.counters,
-    qrAvailableData: lastQr
+    qrAvailableData: lastQr,
+    flows,
+    routingMode: flows.length > 0 ? 'flows' : 'env',
+    panel: {
+      authRequired: isPanelAuthEnabled(),
+      fastapiUrlDefault: FASTAPI_URL,
+      targetChatDefault: TARGET_CHAT || null
+    },
+    version: APP_VERSION
   };
 }
 
@@ -198,11 +542,91 @@ async function sendWithRateLimit(chatId, text) {
   });
 }
 
-async function postToFastAPI(payload) {
-  const response = await axios.post(FASTAPI_URL, payload, { timeout: 30000 });
+async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption) {
+  const waitMs = Math.max(0, SEND_DELAY_MS - (Date.now() - lastSendTs));
+  if (waitMs > 0) {
+    await sleep(waitMs);
+  }
+
+  const chat = await client.getChatById(chatId);
+  const media = new MessageMedia(mimetype, data, filename || undefined);
+  await chat.sendMessage(media, { caption: caption || undefined });
+
+  lastSendTs = Date.now();
+  state.lastSendAt = nowIso();
+  state.counters.sent += 1;
+
+  pushLog('INFO', 'Forward sent (media)', {
+    targetChat: chatId,
+    mimetype
+  });
+}
+
+/**
+ * WA → WhatsApp: текст і/або зображення (інші типи медіа — за потреби розширити).
+ */
+async function forwardWaToWa(flow, msg) {
+  const target = flow.targetChatId;
+  if (!target) {
+    pushLog('ERROR', 'WA→WA: немає targetChatId', { flowId: flow.id });
+    return;
+  }
+  const caption = String(msg.body || '').trim();
+  const wantMedia = flow.sendAttachments && msg.hasMedia;
+
+  if (wantMedia) {
+    try {
+      const dl = await msg.downloadMedia();
+      if (dl && dl.data) {
+        await sendMediaWithRateLimit(
+          target,
+          dl.mimetype,
+          dl.data,
+          dl.filename || undefined,
+          caption || undefined
+        );
+        return;
+      }
+    } catch (err) {
+      pushLog('ERROR', 'WA→WA: не вдалося завантажити медіа', {
+        message: err.message
+      });
+    }
+  }
+
+  if (caption) {
+    await sendWithRateLimit(target, caption);
+  } else if (!wantMedia) {
+    pushLog('INFO', 'WA→WA: немає тексту й медіа для пересилання', {
+      flowId: flow.id
+    });
+  }
+}
+
+async function postToFastAPI(payload, url = FASTAPI_URL) {
+  const response = await axios.post(url, payload, { timeout: 30000 });
   state.lastPostAt = nowIso();
   state.counters.posted += 1;
   return response.data;
+}
+
+/** Пересилання вкладення у цільовий чат (FastAPI-гілка). */
+async function forwardFlowMediaToTarget(flow, msg, caption) {
+  const targetChat = flow.targetChatId || TARGET_CHAT;
+  if (!targetChat) {
+    pushLog('ERROR', 'Немає цільового чату для медіа (TARGET_CHAT / targetChatId)');
+    return;
+  }
+  if (!flow.sendAttachments || !msg.hasMedia) return;
+  const dl = await msg.downloadMedia();
+  if (!dl || !dl.data) return;
+  await sendMediaWithRateLimit(
+    targetChat,
+    dl.mimetype,
+    dl.data,
+    dl.filename || undefined,
+    caption || undefined
+  );
 }
 
 function deleteDirIfExists(dirPath) {
@@ -287,8 +711,55 @@ function attachClientEvents(instance) {
       const chatId = getChatId(msg);
       const rawText = String(msg.body || '').trim();
 
-      if (chatId !== SOURCE_CHAT) {
+      let flow = null;
+      if (flows.length > 0) {
+        flow = flows.find((f) => getSourceIds(f).includes(chatId));
+        if (!flow) {
+          state.counters.ignored += 1;
+          return;
+        }
+      } else {
+        if (!SOURCE_CHAT || chatId !== SOURCE_CHAT) {
+          state.counters.ignored += 1;
+          return;
+        }
+        let kwE = SOURCE_FILTER_KEYWORDS;
+        let frE = SOURCE_FILTER_FREQUENCIES;
+        if (
+          splitFilterTokens(kwE).length === 0 &&
+          splitFilterTokens(frE).length === 0
+        ) {
+          kwE = '*';
+        }
+        flow = {
+          id: '_env',
+          name: 'Змінні середовища',
+          direction: 'wa_fastapi',
+          sourceChatId: SOURCE_CHAT,
+          sourceChatIds: [SOURCE_CHAT],
+          targetChatId: TARGET_CHAT || null,
+          fastapiUrl: FASTAPI_URL,
+          paused: false,
+          keywords: kwE,
+          frequencies: frE
+        };
+      }
+
+      if (flow.paused === true) {
         state.counters.ignored += 1;
+        pushLog('INFO', 'Автоматизація на паузі', {
+          flowId: flow.id,
+          name: flow.name
+        });
+        return;
+      }
+
+      if (!passesFlowContentFilters(flow, rawText)) {
+        state.counters.ignored += 1;
+        pushLog('INFO', 'Пропуск: не пройшли фільтри ключових слів / частот', {
+          flowId: flow.id,
+          name: flow.name
+        });
         return;
       }
 
@@ -298,31 +769,86 @@ function attachClientEvents(instance) {
       const normalizedText = stripPrefix(rawText, SEND_PREFIX);
 
       pushLog('INFO', 'Source message accepted', {
+        flowId: flow.id,
+        flowName: flow.name,
+        direction: flow.direction,
         chatId,
         fromMe: msg.fromMe,
         allowSend,
         startsWithPrefix: allowSend,
+        hasMedia: Boolean(msg.hasMedia),
         textPreview: normalizedText.slice(0, 120),
         messageId: msg.id?._serialized || null
       });
 
+      if (flow.direction === 'wa_wa') {
+        await forwardWaToWa(flow, msg);
+        return;
+      }
+
+      if (!isFastapiDirection(flow)) {
+        pushLog('ERROR', 'Невідомий напрямок автоматизації', {
+          flowId: flow.id,
+          direction: flow.direction
+        });
+        return;
+      }
+
+      const textForIngest = String(normalizedText).trim();
+      if (!textForIngest) {
+        if (allowSend && flow.sendAttachments && msg.hasMedia) {
+          try {
+            await forwardFlowMediaToTarget(flow, msg, '');
+          } catch (err) {
+            pushLog('ERROR', 'Медіа без тексту для інжесту', { message: err.message });
+          }
+          return;
+        }
+        pushLog('INFO', 'Пропуск FastAPI: порожній text після префікса (бекенд вимагає непорожній text)', {
+          chatId,
+          rawPreview: rawText.slice(0, 80)
+        });
+        return;
+      }
+
+      const messageId = msg.id?._serialized || null;
+      if (!messageId) {
+        pushLog('ERROR', 'Немає message_id для інжесту', { chatId });
+        return;
+      }
+
+      const ingestUrl = flow.fastapiUrl || FASTAPI_URL;
       const payload = {
         platform: 'whatsapp',
         chat_id: chatId,
         chat_name: null,
-        message_id: msg.id?._serialized || null,
+        message_id: messageId,
         author: msg.author || msg.from || null,
         published_at_platform: msg.timestamp
           ? new Date(msg.timestamp * 1000).toISOString()
           : nowIso(),
-        text: normalizedText,
-        allow_send: allowSend
+        text: textForIngest,
+        allow_send: allowSend,
+        flow_id: flow.id,
+        flow_name: flow.name
       };
 
-      const apiResult = await postToFastAPI(payload);
+      let apiResult;
+      try {
+        apiResult = await postToFastAPI(payload, ingestUrl);
+      } catch (err) {
+        const ax = err.response;
+        pushLog('ERROR', 'FastAPI POST failed', {
+          message: err.message,
+          status: ax?.status,
+          body: ax?.data ?? null
+        });
+        return;
+      }
       const actions = Array.isArray(apiResult?.actions) ? apiResult.actions : [];
 
       pushLog('INFO', 'FastAPI POST success', {
+        flowId: flow.id,
         allowSend,
         actionsCount: actions.length
       });
@@ -332,7 +858,21 @@ function attachClientEvents(instance) {
         return;
       }
 
+      const targetChat = flow.targetChatId || TARGET_CHAT;
+      if (!targetChat) {
+        pushLog('ERROR', 'Немає цільового чату для відповідей (targetChatId / TARGET_CHAT)');
+        return;
+      }
+
       if (actions.length === 0) {
+        if (flow.sendAttachments && msg.hasMedia) {
+          try {
+            await forwardFlowMediaToTarget(flow, msg, textForIngest);
+          } catch (err) {
+            pushLog('ERROR', 'Пересилання медіа без actions', { message: err.message });
+          }
+          return;
+        }
         pushLog('ERROR', 'Forward skipped: backend returned 0 actions');
         return;
       }
@@ -349,13 +889,29 @@ function attachClientEvents(instance) {
           continue;
         }
 
-        await sendWithRateLimit(TARGET_CHAT, text);
+        await sendWithRateLimit(targetChat, text);
+      }
+
+      if (flow.sendAttachments && msg.hasMedia) {
+        try {
+          await forwardFlowMediaToTarget(flow, msg, textForIngest);
+        } catch (err) {
+          pushLog('ERROR', 'Додаткове медіа після actions', { message: err.message });
+        }
       }
     } catch (error) {
-      pushLog('ERROR', 'message_create handler failed', {
-        message: error.message,
-        stack: error.stack
-      });
+      if (error.response) {
+        pushLog('ERROR', 'message_create handler failed (HTTP)', {
+          message: error.message,
+          status: error.response.status,
+          body: error.response.data
+        });
+      } else {
+        pushLog('ERROR', 'message_create handler failed', {
+          message: error.message,
+          stack: error.stack
+        });
+      }
     }
   });
 }
@@ -544,9 +1100,127 @@ app.post('/api/reset-session', async (req, res) => {
   res.json(await resetSession());
 });
 
+app.get('/api/chats', async (req, res) => {
+  if (!client || !state.ready) {
+    return res.status(503).json({ ok: false, message: 'Клієнт WhatsApp не готовий. Спочатку увійдіть через QR.' });
+  }
+  try {
+    const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
+    const chats = await client.getChats();
+    const list = chats
+      .filter((c) => {
+        if (!onlyGroups) return true;
+        return String(c.id._serialized || '').endsWith('@g.us');
+      })
+      .map((c) => ({
+        id: c.id._serialized,
+        name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+    res.json({ ok: true, chats: list });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: error.message });
+  }
+});
+
+app.get('/api/flows', (req, res) => {
+  res.json({ ok: true, flows });
+});
+
+app.post('/api/flows', (req, res) => {
+  const normalized = normalizeAutomation(req.body || {});
+  const err = validateAutomation(normalized, flows, null);
+  if (err) {
+    return res.status(400).json({ ok: false, message: err });
+  }
+  flows.push(normalized);
+  saveFlowsToDisk(flows);
+  writeHealth();
+  broadcastEvent('state', getPublicState());
+  res.json({ ok: true, flow: normalized });
+});
+
+app.put('/api/flows/:id', (req, res) => {
+  const idx = flows.findIndex((f) => f.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ ok: false, message: 'Автоматизацію не знайдено' });
+  }
+  const normalized = normalizeAutomation({ ...flows[idx], ...req.body }, req.params.id);
+  const err = validateAutomation(normalized, flows, req.params.id);
+  if (err) {
+    return res.status(400).json({ ok: false, message: err });
+  }
+  flows[idx] = normalized;
+  saveFlowsToDisk(flows);
+  writeHealth();
+  broadcastEvent('state', getPublicState());
+  res.json({ ok: true, flow: normalized });
+});
+
+app.post('/api/flows/:id/duplicate', (req, res) => {
+  const src = flows.find((f) => f.id === req.params.id);
+  if (!src) {
+    return res.status(404).json({ ok: false, message: 'Автоматизацію не знайдено' });
+  }
+  const copy = migrateFlowRecord({
+    ...src,
+    id: generateFlowId(),
+    name: `${src.name} (копія)`,
+    paused: true
+  });
+  const err = validateAutomation(copy, flows, null);
+  if (err) {
+    return res.status(400).json({ ok: false, message: err });
+  }
+  flows.push(copy);
+  saveFlowsToDisk(flows);
+  writeHealth();
+  broadcastEvent('state', getPublicState());
+  res.json({ ok: true, flow: copy });
+});
+
+app.post('/api/flows/:id/pause', (req, res) => {
+  const idx = flows.findIndex((f) => f.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ ok: false, message: 'Автоматизацію не знайдено' });
+  }
+  const nextPaused = !Boolean(flows[idx].paused);
+  const test = { ...flows[idx], paused: nextPaused };
+  const err = validateAutomation(test, flows, req.params.id);
+  if (err) {
+    return res.status(400).json({ ok: false, message: err });
+  }
+  flows[idx].paused = nextPaused;
+  saveFlowsToDisk(flows);
+  writeHealth();
+  broadcastEvent('state', getPublicState());
+  res.json({ ok: true, flow: flows[idx] });
+});
+
+app.delete('/api/flows/:id', (req, res) => {
+  const before = flows.length;
+  flows = flows.filter((f) => f.id !== req.params.id);
+  if (flows.length === before) {
+    return res.status(404).json({ ok: false, message: 'Автоматизацію не знайдено' });
+  }
+  saveFlowsToDisk(flows);
+  writeHealth();
+  broadcastEvent('state', getPublicState());
+  res.json({ ok: true });
+});
+
+app.use(express.static(PUBLIC_DIR));
+
 app.listen(PORT, () => {
   startHeartbeat();
   setStatus('idle');
   pushLog('INFO', `Control panel started at http://localhost:${PORT}`);
+  if (!isPanelAuthEnabled()) {
+    pushLog(
+      'WARN',
+      'Панель без пароля: додайте PANEL_USER і PANEL_PASSWORD у .env для захисту доступу'
+    );
+  }
   pushLog('INFO', 'Browser auto-open disabled in server');
+  pushLog('INFO', `WA Bridge ${APP_VERSION}`);
 });

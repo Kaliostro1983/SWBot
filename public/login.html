@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Вхід — WA Bridge</title>
+  <style>
+    :root {
+      --bg: #0a0e14;
+      --panel: #111827;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #2dd4bf;
+      --radius: 14px;
+      --font: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(400px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 26px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.45);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.25rem;
+    }
+    .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; line-height: 1.45; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      font-size: 15px;
+      margin-bottom: 14px;
+      font-family: inherit;
+    }
+    button {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:hover { filter: brightness(1.06); }
+    .err {
+      display: none;
+      font-size: 13px;
+      color: #f87171;
+      margin-bottom: 12px;
+    }
+    .err.show { display: block; }
+    .login-version {
+      position: fixed;
+      left: 16px;
+      bottom: 14px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div id="loginVersion" class="login-version" title="Версія з файлу VERSION"></div>
+  <div class="card">
+    <h1>WA Bridge</h1>
+    <p class="sub">Вхід у панель керування. Облікові дані задаються в змінних середовища <code>PANEL_USER</code> та <code>PANEL_PASSWORD</code>.</p>
+    <div class="err" id="err"></div>
+    <form id="form">
+      <label for="user">Логін</label>
+      <input id="user" name="user" autocomplete="username" required />
+      <label for="password">Пароль</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Увійти</button>
+    </form>
+  </div>
+  <script>
+    function formatVersion(v) {
+      if (!v) return '';
+      const s = String(v).trim();
+      return s.startsWith('v') ? s : `v${s}`;
+    }
+
+    (async () => {
+      const r = await fetch('/api/panel-auth/me', { credentials: 'same-origin' });
+      const d = await r.json();
+      const lv = document.getElementById('loginVersion');
+      if (lv && d.version) lv.textContent = formatVersion(d.version);
+      if (d.ok && (d.authDisabled || d.auth)) {
+        window.location.replace('/');
+      }
+    })();
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.classList.remove('show');
+      const user = document.getElementById('user').value.trim();
+      const password = document.getElementById('password').value;
+      const res = await fetch('/api/panel-auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ user, password })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        window.location.replace('/');
+        return;
+      }
+      err.textContent = data.message || 'Помилка входу';
+      err.classList.add('show');
+    });
+  </script>
+</body>
+</html>

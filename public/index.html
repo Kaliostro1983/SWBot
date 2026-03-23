@@ -3,178 +3,668 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WhatsApp Bot Control</title>
+  <title>WA Bridge — панель керування</title>
   <style>
+    :root {
+      --bg: #0a0e14;
+      --panel: #111827;
+      --panel2: #0f172a;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #2dd4bf;
+      --accent-dim: rgba(45, 212, 191, 0.15);
+      --danger: #f87171;
+      --sidebar-w: 248px;
+      --aside-w: 300px;
+      --radius: 14px;
+      --font: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
     }
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
+    .app {
+      display: flex;
+      min-height: 100vh;
     }
-    h1 {
-      margin-top: 0;
+    .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
+      background: var(--panel2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 20px 14px;
     }
+    .logo {
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      margin-bottom: 28px;
+      padding: 0 8px;
+    }
+    .logo span { color: var(--accent); }
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 14px;
+      margin-bottom: 6px;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.06); }
+    .nav-btn.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    .badge {
+      margin-left: auto;
+      background: var(--accent);
+      color: #0f172a;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+    .sidebar-foot {
+      margin-top: auto;
+      padding: 12px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .sidebar-version {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 24px 28px 40px;
+      overflow-x: hidden;
+    }
+    .aside {
+      width: var(--aside-w);
+      flex-shrink: 0;
+      border-left: 1px solid var(--border);
+      background: var(--panel2);
+      padding: 24px 20px;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    .aside h3 {
+      color: var(--text);
+      font-size: 15px;
+      margin: 0 0 12px;
+    }
+    .aside ul { margin: 0; padding-left: 18px; }
+    .aside li { margin-bottom: 8px; }
+    h1.page-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin: 0 0 20px;
+    }
+    .view { display: none; }
+    .view.active { display: block; }
     .toolbar {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       margin-bottom: 20px;
     }
-    button {
+    button, .btn {
       border: none;
       border-radius: 10px;
-      padding: 12px 16px;
+      padding: 11px 16px;
       cursor: pointer;
-      font-weight: bold;
+      font-weight: 700;
+      font-size: 13px;
+      font-family: inherit;
     }
-    .green { background: #16a34a; color: white; }
-    .red { background: #dc2626; color: white; }
-    .blue { background: #2563eb; color: white; }
-    .orange { background: #ea580c; color: white; }
-    .gray { background: #475569; color: white; }
-
-    .grid {
+    .btn-accent {
+      background: var(--accent);
+      color: #0f172a;
+    }
+    .btn-accent:hover { filter: brightness(1.05); }
+    .btn-outline {
+      background: transparent;
+      color: var(--accent);
+      border: 2px solid var(--accent);
+    }
+    .btn-ghost { background: #334155; color: var(--text); }
+    .btn-danger { background: #b91c1c; color: white; }
+    .btn-sm { padding: 8px 12px; font-size: 12px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+    }
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
     }
-    .card {
-      background: #111827;
-      border: 1px solid #334155;
-      border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    @media (max-width: 1100px) {
+      .aside { display: none; }
+    }
+    @media (max-width: 900px) {
+      .grid-2 { grid-template-columns: 1fr; }
+      .app { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .sidebar-foot { width: 100%; }
     }
     .stat {
       display: grid;
-      grid-template-columns: 220px 1fr;
-      gap: 8px;
-      margin-bottom: 8px;
-      font-size: 14px;
+      grid-template-columns: 160px 1fr;
+      gap: 6px;
+      font-size: 13px;
+      margin-bottom: 6px;
     }
-    .label {
-      color: #94a3b8;
-    }
+    .stat .label { color: var(--muted); }
     #statusBadge {
       display: inline-block;
-      padding: 6px 10px;
+      padding: 6px 12px;
       border-radius: 999px;
       background: #334155;
-      font-weight: bold;
+      font-weight: 700;
+      font-size: 13px;
     }
     #qr {
-      max-width: 280px;
+      max-width: 260px;
       width: 100%;
       border-radius: 12px;
       background: white;
       display: none;
+      margin-top: 8px;
     }
+    .flow-list { display: flex; flex-direction: column; gap: 12px; }
+    .flow-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      background: var(--panel2);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .flow-card h3 { margin: 0 0 6px; font-size: 1rem; }
+    .flow-meta { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .dir-pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .flow-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
+    .flow-card.paused { opacity: 0.88; }
+    .paused-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(251, 191, 36, 0.12);
+      color: #fbbf24;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #334155;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .icon-btn:hover { filter: brightness(1.12); }
+    .icon-btn.danger {
+      background: #7f1d1d;
+      border-color: #991b1b;
+      color: #fecaca;
+    }
+    .icon-btn svg { width: 18px; height: 18px; display: block; }
+    .toolbar-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toolbar-toggle input { accent-color: var(--accent); }
+    .hint {
+      font-size: 13px;
+      color: var(--muted);
+      padding: 12px 14px;
+      background: rgba(250, 204, 21, 0.08);
+      border: 1px solid rgba(250, 204, 21, 0.25);
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      width: min(520px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 22px 18px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .modal-head h2 { margin: 0; font-size: 1.15rem; }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 4px 8px;
+    }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .field input:not([type="checkbox"]):not([type="radio"]),
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .field input[type="checkbox"],
+    .field input[type="radio"] {
+      width: auto;
+      height: auto;
+      margin: 0;
+      padding: 0;
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      accent-color: var(--accent);
+    }
+    .field label:has(input[type="checkbox"]),
+    .field label:has(input[type="radio"]) {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-transform: none;
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: normal;
+      margin-bottom: 0;
+      cursor: pointer;
+      line-height: 1.35;
+    }
+    .field textarea { min-height: 72px; resize: vertical; }
+    .field-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .field-row .field { flex: 1; margin-bottom: 0; }
     #logs {
       background: #020617;
       color: #cbd5e1;
       border-radius: 12px;
       padding: 12px;
-      height: 500px;
+      height: 320px;
       overflow: auto;
       white-space: pre-wrap;
-      font-family: Consolas, monospace;
-      font-size: 13px;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px;
       border: 1px solid #1e293b;
     }
-    .muted {
-      color: #94a3b8;
+    .empty { color: var(--muted); font-size: 14px; padding: 24px; text-align: center; }
+    select[multiple] {
+      min-height: 160px;
+      padding: 8px;
+    }
+    select[multiple] option { padding: 6px 8px; }
+    .modal-section {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-section:last-of-type { border-bottom: none; }
+    .modal-section h3 {
+      margin: 0 0 10px;
       font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
-    @media (max-width: 900px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-      .stat {
-        grid-template-columns: 1fr;
-      }
+    input:disabled, select:disabled, textarea:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
     }
+    .modal .sub.field-hint { margin-top: 6px; font-size: 12px; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>WhatsApp Bot Control Panel</h1>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">WA <span>Bridge</span></div>
+      <button type="button" class="nav-btn active" data-nav="integration">
+        Інтеграція
+      </button>
+      <button type="button" class="nav-btn" data-nav="flows">
+        Автоматизації <span class="badge" id="flowCount">0</span>
+      </button>
+      <button type="button" class="nav-btn" data-nav="settings">
+        Налаштування
+      </button>
+      <button type="button" class="nav-btn" id="panelLogoutBtn" onclick="panelLogout()">
+        Вийти з панелі
+      </button>
+      <div class="sidebar-foot">
+        <span id="appVersion" class="sidebar-version" title="Версія з файлу VERSION">—</span>
+        <span>Локальна панель · порт змінних середовища</span>
+      </div>
+    </aside>
 
-    <div class="toolbar">
-      <button class="green" onclick="callApi('/api/start')">Запустити чат</button>
-      <button class="gray" onclick="callApi('/api/stop')">Зупинити</button>
-      <button class="blue" onclick="callApi('/api/login')">Log-in</button>
-      <button class="orange" onclick="callApi('/api/logout')">Log-out</button>
-      <button class="red" onclick="resetSession()">Reset session</button>
-    </div>
+    <main class="main">
+      <section class="view active" id="view-integration">
+        <h1 class="page-title">Інтеграція WhatsApp</h1>
+        <p class="hint" id="routingHint"></p>
 
-    <div class="grid">
-      <div class="card">
-        <h3>Стан</h3>
-        <div style="margin-bottom: 12px;">
-          <span id="statusBadge">idle</span>
+        <div class="toolbar">
+          <button type="button" class="btn btn-accent" onclick="callApi('/api/start')" title="Відновити клієнт після зупинки або першого запуску">Запустити бота</button>
+          <button type="button" class="btn btn-outline" onclick="callApi('/api/login')" title="Те саме, що запуск; якщо потрібна авторизація — з’явиться QR">Увійти (QR)</button>
+          <button type="button" class="btn btn-ghost" onclick="callApi('/api/stop')">Зупинити</button>
+          <button type="button" class="btn btn-ghost" onclick="callApi('/api/logout')">Вийти з акаунта</button>
+          <button type="button" class="btn btn-danger" onclick="resetSession()">Скинути сесію</button>
+        </div>
+        <p class="muted" style="font-size:13px; margin:-8px 0 16px; line-height:1.45;">
+          Після <strong>Зупинити</strong> натисніть <strong>Запустити бота</strong> — клієнт знову підніметься. Якщо сесія WhatsApp ще збережена локально, QR може не з’явитися. Кнопка «Увійти (QR)» викликає той самий запуск (зручно, коли очікуєш QR).
+        </p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>Стан з’єднання</h2>
+            <p class="sub">Статус клієнта та останні події</p>
+            <div style="margin-bottom: 12px;"><span id="statusBadge">—</span></div>
+            <div class="stat"><span class="label">Авторизовано</span><span id="authenticated">—</span></div>
+            <div class="stat"><span class="label">Готовий</span><span id="ready">—</span></div>
+            <div class="stat"><span class="label">Остання помилка</span><span id="lastError">—</span></div>
+            <div class="stat"><span class="label">Режим маршрутизації</span><span id="routingMode">—</span></div>
+            <div class="stat"><span class="label">Захист панелі</span><span id="panelAuthNote">—</span></div>
+            <div class="stat"><span class="label">FastAPI за замовчуванням</span><span id="panelFastapiUrl">—</span></div>
+            <div class="stat"><span class="label">Чат відповідей (.env)</span><span id="panelTargetEnv">—</span></div>
+          </div>
+          <div class="card">
+            <h2>Акаунт</h2>
+            <p class="sub">Параметри після успішного входу</p>
+            <img id="qr" alt="QR" />
+            <div class="stat"><span class="label">WID</span><span id="clientWid">—</span></div>
+            <div class="stat"><span class="label">Ім’я (pushname)</span><span id="clientPushname">—</span></div>
+            <div class="stat"><span class="label">Платформа</span><span id="clientPlatform">—</span></div>
+          </div>
         </div>
 
-        <div class="stat"><div class="label">Authenticated</div><div id="authenticated">-</div></div>
-        <div class="stat"><div class="label">Ready</div><div id="ready">-</div></div>
-        <div class="stat"><div class="label">QR available</div><div id="qrAvailable">-</div></div>
-        <div class="stat"><div class="label">Source chat</div><div id="sourceChat">-</div></div>
-        <div class="stat"><div class="label">Target chat</div><div id="targetChat">-</div></div>
-        <div class="stat"><div class="label">Started at</div><div id="startedAt">-</div></div>
-        <div class="stat"><div class="label">Last pulse</div><div id="lastPulseAt">-</div></div>
-        <div class="stat"><div class="label">Last event</div><div id="lastEventAt">-</div></div>
-        <div class="stat"><div class="label">Last ready</div><div id="lastReadyAt">-</div></div>
-        <div class="stat"><div class="label">Last message</div><div id="lastMessageAt">-</div></div>
-        <div class="stat"><div class="label">Last POST</div><div id="lastPostAt">-</div></div>
-        <div class="stat"><div class="label">Last send</div><div id="lastSendAt">-</div></div>
-        <div class="stat"><div class="label">Last error</div><div id="lastError">-</div></div>
-        <div class="stat"><div class="label">Disconnect reason</div><div id="lastDisconnectReason">-</div></div>
+        <div class="card">
+          <h2>Журнал</h2>
+          <p class="sub">Останні події сервера (SSE)</p>
+          <div id="logs"></div>
+        </div>
+      </section>
 
-        <h3>Лічильники</h3>
-        <div class="stat"><div class="label">Received</div><div id="cntReceived">0</div></div>
-        <div class="stat"><div class="label">Accepted</div><div id="cntAccepted">0</div></div>
-        <div class="stat"><div class="label">Ignored</div><div id="cntIgnored">0</div></div>
-        <div class="stat"><div class="label">Posted</div><div id="cntPosted">0</div></div>
-        <div class="stat"><div class="label">Sent</div><div id="cntSent">0</div></div>
-        <div class="stat"><div class="label">Errors</div><div id="cntErrors">0</div></div>
+      <section class="view" id="view-flows">
+        <h1 class="page-title">Автоматизації</h1>
+        <p class="hint">
+          Сценарій: <strong>WhatsApp → FastAPI</strong>. Спочатку <strong>фільтри</strong> за ключовими словами та частотами (підрядки в тексті); якщо заповнені обидва поля — достатньо збігу в <strong>одному</strong> з них. Токен <code>*</code> у будь-якому з полів — без фільтрації.
+          Якщо список автоматизацій <strong>не порожній</strong>, обробляються лише вказані чати-джерела. Якщо порожній — маршрут з <code>.env</code> (<code>SOURCE_CHAT</code> / <code>TARGET_CHAT</code>; опційно <code>SOURCE_FILTER_*</code>).
+        </p>
+        <div class="toolbar">
+          <button type="button" class="btn btn-outline" onclick="openFlowModal()">+ Додати автоматизацію</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити список чатів</button>
+        </div>
+        <div id="flowList" class="flow-list"></div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <h1 class="page-title">Налаштування</h1>
+        <div class="card">
+          <h2>Налаштування чатів</h2>
+          <p class="sub">Параметри відображення списку чатів в панелі.</p>
+          <div class="field">
+            <label><input type="checkbox" id="showChatIdsToggle" /> Показувати ID</label>
+          </div>
+          <div class="field">
+            <label><input type="checkbox" id="showOnlyGroupsToggle" checked /> Показувати у WhatsApp лише групи</label>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="aside">
+      <h3>Що тут відбувається?</h3>
+      <p><strong>Інтеграція</strong> — підключення номера через QR (як WhatsApp Web), перегляд стану та параметрів сесії.</p>
+      <p><strong>Автоматизації</strong> — кілька чатів-джерел → <strong>FastAPI</strong>; фільтри за текстом і частотами (при двох полях — логіка <strong>АБО</strong>); відповіді <code>actions</code> — у <code>TARGET_CHAT</code> з <code>.env</code>.</p>
+      <ul>
+        <li>Інші напрямки (WA→WA, Signal) — пізніші етапи.</li>
+        <li>Окремий токен <code>*</code> у полі — пропуск усіх повідомлень без фільтрації по цьому автоматизації.</li>
+      </ul>
+    </aside>
+  </div>
+
+  <div class="modal-overlay" id="flowModal" role="dialog" aria-modal="true">
+    <div class="modal" style="width:min(560px,100%);">
+      <div class="modal-head">
+        <h2 id="flowModalTitle">Нова автоматизація</h2>
+        <button type="button" class="modal-close" onclick="closeFlowModal()" aria-label="Закрити">×</button>
       </div>
-
-      <div class="card">
-        <h3>QR / Акаунт</h3>
-        <p class="muted">Після Log-in або Reset session тут з’явиться QR, якщо потрібна нова авторизація.</p>
-        <img id="qr" alt="QR code" />
-        <div class="stat"><div class="label">Client WID</div><div id="clientWid">-</div></div>
-        <div class="stat"><div class="label">Pushname</div><div id="clientPushname">-</div></div>
-        <div class="stat"><div class="label">Platform</div><div id="clientPlatform">-</div></div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top: 16px;">
-      <h3>Live log</h3>
-      <div id="logs"></div>
+      <form id="flowForm" onsubmit="submitFlow(event)">
+        <input type="hidden" id="flowId" value="" />
+        <div class="modal-section">
+          <h3>Загальні налаштування</h3>
+          <div class="field">
+            <label for="flowName">Назва автоматизації</label>
+            <input id="flowName" required maxlength="120" placeholder="Напр. Вхідний потік з групи А" />
+          </div>
+          <div class="field">
+            <label for="flowDirection">Напрямок пересилання</label>
+            <select id="flowDirection">
+              <option value="wa_fastapi">WhatsApp → FastAPI (RER)</option>
+              <option value="wa_wa">WhatsApp → WhatsApp</option>
+            </select>
+            <p class="sub field-hint" id="flowHintFastapi">
+              Endpoint і чат для <code>actions</code> — з <code>.env</code> (<code>FASTAPI_URL</code>, <code>TARGET_CHAT</code>).
+            </p>
+            <p class="sub field-hint" id="flowHintWa" style="display: none">
+              Текст і за потреби зображення пересилаються в обрану групу. FastAPI не викликається.
+            </p>
+          </div>
+          <div class="field">
+            <label for="flowSources">Звідки надсилати (оберіть кілька)</label>
+            <div class="field-row">
+              <div class="field">
+                <select id="flowSources" multiple></select>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити</button>
+            </div>
+            <p class="sub field-hint">Потрібен готовий клієнт WhatsApp. Утримуйте Ctrl/Shift для кількох чатів.</p>
+          </div>
+          <div class="field" id="flowTargetWrap" style="display: none">
+            <label for="flowTarget">Куди надсилати</label>
+            <div class="field-row">
+              <div class="field">
+                <select id="flowTarget">
+                  <option value="">— Оберіть групу —</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-section">
+          <h3>Аналіз тексту повідомлення</h3>
+          <div class="field">
+            <label for="flowKeywords">Ключові слова (текст повідомлення)</label>
+            <textarea
+              id="flowKeywords"
+              rows="3"
+              placeholder="Кілька значень через кому або з нового рядка. * — не фільтрувати за текстом (якщо * лише тут або у «Частотах»)."
+            ></textarea>
+            <p class="sub field-hint">
+              Має збігатися хоча б один токен (підрядок у тексті). Якщо заповнені й «Частоти» — достатньо збігу в одному з полів (АБО).
+            </p>
+          </div>
+          <div class="field">
+            <label for="flowFrequencies">Частоти</label>
+            <textarea
+              id="flowFrequencies"
+              rows="3"
+              placeholder="Напр. 144.500 або позначення діапазону; * — не фільтрувати за частотами"
+            ></textarea>
+            <p class="sub field-hint">Так само підрядки в тексті повідомлення (наприклад згадка частоти в дописі).</p>
+          </div>
+          <div class="field">
+            <label for="flowPlugin">Власні функції (plugins)</label>
+            <select id="flowPlugin" disabled>
+              <option>Незабаром</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-section">
+          <h3>Координати та артефакти</h3>
+          <div class="field">
+            <label><input type="checkbox" disabled /> Додавати скріншот з координатами</label>
+          </div>
+          <div class="field">
+            <label><input type="checkbox" id="flowSendAttachments" /> Пересилати зображення з повідомлення</label>
+            <p class="sub field-hint">Для WA→WhatsApp і для WA→FastAPI (у цільовий чат після відповіді API, якщо є медіа).</p>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:18px;">
+          <button type="submit" class="btn btn-accent">Зберегти</button>
+          <button type="button" class="btn btn-ghost" onclick="closeFlowModal()">Скасувати</button>
+        </div>
+      </form>
     </div>
   </div>
 
   <script>
     const logsEl = document.getElementById('logs');
     const qrEl = document.getElementById('qr');
+    let chatsCache = [];
+    let cachedFlowsSnapshot = [];
+
+    const ICON_COPY =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+    const ICON_PAUSE =
+      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    const ICON_PLAY =
+      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    const ICON_EDIT =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+    const ICON_TRASH =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
+
+    function getShowChatIds() {
+      return localStorage.getItem('wb_showChatIds') === '1';
+    }
+    function setShowChatIds(on) {
+      localStorage.setItem('wb_showChatIds', on ? '1' : '0');
+    }
+    function getShowOnlyGroups() {
+      const v = localStorage.getItem('wb_showOnlyGroups');
+      return v === null ? true : v === '1';
+    }
+    function setShowOnlyGroups(on) {
+      localStorage.setItem('wb_showOnlyGroups', on ? '1' : '0');
+    }
 
     function fmt(v) {
-      return v === null || v === undefined || v === '' ? '-' : String(v);
+      return v === null || v === undefined || v === '' ? '—' : String(v);
     }
 
     function appendLog(item) {
       const meta = item.meta ? ' ' + JSON.stringify(item.meta) : '';
       logsEl.textContent += `[${item.ts}] [${item.level}] ${item.message}${meta}\n`;
       logsEl.scrollTop = logsEl.scrollHeight;
-    }
-
-    function clearLogs() {
-      logsEl.textContent = '';
     }
 
     function setText(id, value) {
@@ -186,29 +676,28 @@
       setText('statusBadge', s.status);
       setText('authenticated', s.authenticated);
       setText('ready', s.ready);
-      setText('qrAvailable', s.qrAvailable);
-      setText('sourceChat', s.sourceChat);
-      setText('targetChat', s.targetChat);
-      setText('startedAt', s.startedAt);
-      setText('lastPulseAt', s.lastPulseAt);
-      setText('lastEventAt', s.lastEventAt);
-      setText('lastReadyAt', s.lastReadyAt);
-      setText('lastMessageAt', s.lastMessageAt);
-      setText('lastPostAt', s.lastPostAt);
-      setText('lastSendAt', s.lastSendAt);
       setText('lastError', s.lastError);
-      setText('lastDisconnectReason', s.lastDisconnectReason);
+      const rm = s.routingMode === 'flows' ? 'Автоматизації (data/flows.json)' : 'Змінні середовища (.env)';
+      setText('routingMode', rm);
 
-      setText('cntReceived', s.counters?.received ?? 0);
-      setText('cntAccepted', s.counters?.accepted ?? 0);
-      setText('cntIgnored', s.counters?.ignored ?? 0);
-      setText('cntPosted', s.counters?.posted ?? 0);
-      setText('cntSent', s.counters?.sent ?? 0);
-      setText('cntErrors', s.counters?.errors ?? 0);
+      const p = s.panel;
+      if (p) {
+        setText('panelAuthNote', p.authRequired ? 'Увімкнено (PANEL_USER)' : 'Вимкнено — задайте PANEL_USER і PANEL_PASSWORD');
+        setText('panelFastapiUrl', p.fastapiUrlDefault || '—');
+        setText('panelTargetEnv', p.targetChatDefault || '—');
+      }
+      const verEl = document.getElementById('appVersion');
+      if (verEl && s.version) {
+        const v = String(s.version).trim();
+        verEl.textContent = v.startsWith('v') ? v : `v${v}`;
+      }
 
       setText('clientWid', s.clientInfo?.wid);
       setText('clientPushname', s.clientInfo?.pushname);
       setText('clientPlatform', s.clientInfo?.platform);
+
+      const fc = document.getElementById('flowCount');
+      if (fc) fc.textContent = (s.flows && s.flows.length) ? s.flows.length : '0';
 
       if (s.qrAvailable && s.qrAvailableData) {
         qrEl.src = s.qrAvailableData;
@@ -217,47 +706,475 @@
         qrEl.style.display = 'none';
         qrEl.removeAttribute('src');
       }
+
+      const hint = document.getElementById('routingHint');
+      if (hint) {
+        if (s.routingMode === 'env') {
+          hint.innerHTML = 'Увімкнено <strong>один маршрут з .env</strong>. Додайте автоматизації для кількох чатів-джерел → FastAPI.';
+        } else {
+          hint.innerHTML =
+            'Активні <strong>автоматизації</strong> — обробляються лише вказані чати-джерела (WA → FastAPI або WA → WhatsApp).';
+        }
+      }
+
+      cachedFlowsSnapshot = s.flows || [];
+      renderFlowList(cachedFlowsSnapshot);
+    }
+
+    function directionLabel(d) {
+      if (d === 'wa_wa') return 'WA → WhatsApp';
+      return 'WA → FastAPI';
+    }
+
+    function routeFooterLine(f) {
+      if (f.direction === 'wa_wa') {
+        const tid = f.targetChatId ? chatLabelById(f.targetChatId) : '—';
+        const extra = f.sendAttachments ? ' · зображення' : '';
+        return `Ціль: ${escapeHtml(tid)}${extra}`;
+      }
+      return 'FastAPI: з .env · Відповіді actions → TARGET_CHAT з .env';
+    }
+
+    function sourceList(f) {
+      if (Array.isArray(f.sourceChatIds) && f.sourceChatIds.length) return f.sourceChatIds;
+      if (f.sourceChatId) return [f.sourceChatId];
+      return [];
+    }
+
+    function chatLabelById(chatId) {
+      const c = chatsCache.find((x) => x.id === chatId);
+      if (c && c.name) return c.name;
+      return chatId;
+    }
+
+    function splitFilterTokensClient(s) {
+      return String(s || '')
+        .split(/[\n,;]+/)
+        .map((x) => x.trim())
+        .filter((x) => x.length > 0);
+    }
+
+    function flowSkipsFiltersClient(f) {
+      const kw = f.keywords || '';
+      const fr = f.frequencies || '';
+      return splitFilterTokensClient(kw).some((t) => t === '*') ||
+        splitFilterTokensClient(fr).some((t) => t === '*');
+    }
+
+    function filterSummaryLine(f) {
+      if (flowSkipsFiltersClient(f)) {
+        return '<span style="color:#86efac">Фільтри: вимкнено (*)</span>';
+      }
+      const kt = splitFilterTokensClient(f.keywords || '').filter((t) => t !== '*');
+      const ft = splitFilterTokensClient(f.frequencies || '').filter((t) => t !== '*');
+      const parts = [];
+      if (kt.length) parts.push('текст: ' + kt.length + ' ток.');
+      if (ft.length) parts.push('частоти: ' + ft.length + ' ток.');
+      return escapeHtml(parts.length ? parts.join(' · ') : '—');
+    }
+
+    function formatSourceLines(ids) {
+      const showIds = getShowChatIds();
+      return ids
+        .map((id) => {
+          const label = escapeHtml(chatLabelById(id));
+          if (showIds) {
+            return `${label}<br/><code style="font-size:11px;opacity:.88">${escapeHtml(id)}</code>`;
+          }
+          return label;
+        })
+        .join('<br/>');
+    }
+
+    function renderFlowList(flows) {
+      const el = document.getElementById('flowList');
+      if (!el) return;
+      if (!flows.length) {
+        el.innerHTML = '<div class="empty">Автоматизацій ще немає. Натисніть «Додати автоматизацію».</div>';
+        return;
+      }
+      el.innerHTML = flows
+        .map((f) => {
+          const src = sourceList(f);
+          const srcLine = src.length ? formatSourceLines(src) : '—';
+          const paused = Boolean(f.paused);
+          const pauseIcon = paused ? ICON_PLAY : ICON_PAUSE;
+          const pauseTitle = paused ? 'Запустити' : 'Пауза';
+          return `
+        <div class="flow-card${paused ? ' paused' : ''}">
+          <div>
+            <div class="dir-pill">${directionLabel(f.direction)}</div>
+            <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}</h3>
+            <div class="flow-meta">
+              Джерела:<br/>${srcLine}<br/>
+              <span style="margin-top:8px;display:inline-block;">${filterSummaryLine(f)}</span><br/>
+              <span style="margin-top:6px;display:inline-block;">${routeFooterLine(f)}</span>
+            </div>
+          </div>
+          <div class="flow-actions">
+            <button type="button" class="icon-btn flow-dup-btn" data-flowid="${encodeURIComponent(f.id)}" title="Дублювати">${ICON_COPY}</button>
+            <button type="button" class="icon-btn flow-pause-btn" data-flowid="${encodeURIComponent(f.id)}" title="${pauseTitle}">${pauseIcon}</button>
+            <button type="button" class="icon-btn flow-edit-btn" data-flowid="${encodeURIComponent(f.id)}" title="Редагувати">${ICON_EDIT}</button>
+            <button type="button" class="icon-btn flow-del-btn danger" data-flowid="${encodeURIComponent(f.id)}" title="Видалити">${ICON_TRASH}</button>
+          </div>
+        </div>
+      `;
+        })
+        .join('');
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
     }
 
     async function callApi(url) {
-      const res = await fetch(url, { method: 'POST' });
+      const res = await fetch(url, { method: 'POST', credentials: 'same-origin' });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
       const data = await res.json();
       console.log(data);
+      if (!data.ok && data.message) alert(data.message);
+    }
+
+    async function panelLogout() {
+      await fetch('/api/panel-auth/logout', { method: 'POST', credentials: 'same-origin' });
+      window.location.href = '/login.html';
     }
 
     async function resetSession() {
-      const ok = confirm('Видалити сесію і вимагати новий QR?');
-      if (!ok) return;
+      if (!confirm('Видалити локальну сесію та знову відсканувати QR?')) return;
       await callApi('/api/reset-session');
     }
 
-    async function initialLoad() {
-      const state = await fetch('/api/state').then(r => r.json());
-      renderState(state);
+    document.querySelectorAll('.nav-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const v = btn.getAttribute('data-nav');
+        document.querySelectorAll('.view').forEach((view) => view.classList.remove('active'));
+        document.getElementById('view-' + v).classList.add('active');
+      });
+    });
 
-      const logs = await fetch('/api/logs').then(r => r.json());
-      clearLogs();
+    async function loadChats() {
+      const onlyGroups = getShowOnlyGroups() ? '1' : '0';
+      const res = await fetch('/api/chats?only_groups=' + onlyGroups, { credentials: 'same-origin' });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.message || 'Не вдалося отримати чати');
+        return;
+      }
+      chatsCache = data.chats || [];
+      fillSourcesMulti();
+      fillTargetSingle();
+      renderFlowList(cachedFlowsSnapshot);
+    }
+
+    function fillTargetSingle() {
+      const sel = document.getElementById('flowTarget');
+      if (!sel) return;
+      const selected = sel.value;
+      const showIds = getShowChatIds();
+      sel.innerHTML = '<option value="">— Оберіть групу —</option>';
+      for (const c of chatsCache) {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
+        sel.appendChild(o);
+      }
+      if (selected && Array.from(sel.options).some((opt) => opt.value === selected)) {
+        sel.value = selected;
+      }
+    }
+
+    function toggleFlowDirectionUi() {
+      const dirEl = document.getElementById('flowDirection');
+      if (!dirEl) return;
+      const wa = dirEl.value === 'wa_wa';
+      const wrap = document.getElementById('flowTargetWrap');
+      const hFa = document.getElementById('flowHintFastapi');
+      const hWa = document.getElementById('flowHintWa');
+      if (wrap) wrap.style.display = wa ? 'block' : 'none';
+      if (hFa) hFa.style.display = wa ? 'none' : 'block';
+      if (hWa) hWa.style.display = wa ? 'block' : 'none';
+    }
+
+    function fillSourcesMulti() {
+      const sel = document.getElementById('flowSources');
+      if (!sel) return;
+      const selected = new Set(Array.from(sel.selectedOptions).map((o) => o.value));
+      const showIds = getShowChatIds();
+      sel.innerHTML = '';
+      for (const c of chatsCache) {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
+        if (selected.has(c.id)) o.selected = true;
+        sel.appendChild(o);
+      }
+    }
+
+    function openFlowModal(flow) {
+      document.getElementById('flowModalTitle').textContent = flow ? 'Змінити автоматизацію' : 'Нова автоматизація';
+      document.getElementById('flowId').value = flow ? flow.id : '';
+      document.getElementById('flowName').value = flow ? flow.name : '';
+      document.getElementById('flowKeywords').value = flow ? (flow.keywords || '') : '';
+      document.getElementById('flowFrequencies').value = flow ? (flow.frequencies || '') : '';
+      const dirSel = document.getElementById('flowDirection');
+      if (dirSel) {
+        dirSel.value = flow && flow.direction === 'wa_wa' ? 'wa_wa' : 'wa_fastapi';
+      }
+      const sendAtt = document.getElementById('flowSendAttachments');
+      if (sendAtt) sendAtt.checked = flow ? Boolean(flow.sendAttachments) : false;
+      toggleFlowDirectionUi();
+      loadChats().then(() => {
+        const sel = document.getElementById('flowSources');
+        Array.from(sel.options).forEach((o) => {
+          o.selected = false;
+        });
+        if (flow) {
+          const ids = sourceList(flow);
+          ids.forEach((id) => {
+            const o = Array.from(sel.options).find((x) => x.value === id);
+            if (o) o.selected = true;
+          });
+        }
+        const tgt = document.getElementById('flowTarget');
+        if (tgt) {
+          if (flow && flow.targetChatId) {
+            if (!Array.from(tgt.options).some((o) => o.value === flow.targetChatId)) {
+              const o = document.createElement('option');
+              o.value = flow.targetChatId;
+              o.textContent = chatLabelById(flow.targetChatId);
+              tgt.appendChild(o);
+            }
+            tgt.value = flow.targetChatId;
+          } else {
+            tgt.value = '';
+          }
+        }
+      });
+      document.getElementById('flowModal').classList.add('open');
+    }
+
+    function closeFlowModal() {
+      document.getElementById('flowModal').classList.remove('open');
+    }
+
+    async function submitFlow(ev) {
+      ev.preventDefault();
+      const id = document.getElementById('flowId').value;
+      const sel = document.getElementById('flowSources');
+      const sourceChatIds = Array.from(sel.selectedOptions)
+        .map((o) => o.value)
+        .filter(Boolean);
+      if (sourceChatIds.length === 0) {
+        alert('Оберіть хоча б один чат-джерело (утримуйте Ctrl або Shift).');
+        return;
+      }
+      const direction = document.getElementById('flowDirection').value;
+      let targetChatId = null;
+      if (direction === 'wa_wa') {
+        targetChatId = document.getElementById('flowTarget').value;
+        if (!targetChatId) {
+          alert('Оберіть цільовий чат для напрямку WA → WhatsApp');
+          return;
+        }
+      }
+      const body = {
+        name: document.getElementById('flowName').value.trim(),
+        sourceChatIds,
+        direction,
+        keywords: document.getElementById('flowKeywords').value,
+        frequencies: document.getElementById('flowFrequencies').value,
+        sendAttachments: document.getElementById('flowSendAttachments').checked,
+        fastapiUrl: null,
+        targetChatId
+      };
+      const url = id ? '/api/flows/' + encodeURIComponent(id) : '/api/flows';
+      const method = id ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body)
+      });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.message || 'Помилка збереження');
+        return;
+      }
+      closeFlowModal();
+      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
+      renderState(st);
+    }
+
+    async function editFlow(id) {
+      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
+      const f = (st.flows || []).find((x) => x.id === id);
+      if (f) openFlowModal(f);
+    }
+
+    function bindFlowListClicks() {
+      const list = document.getElementById('flowList');
+      if (!list || list.dataset.bound) return;
+      list.dataset.bound = '1';
+      list.addEventListener('click', (e) => {
+        const dupBtn = e.target.closest('.flow-dup-btn');
+        if (dupBtn) {
+          duplicateFlow(decodeURIComponent(dupBtn.getAttribute('data-flowid')));
+          return;
+        }
+        const pauseBtn = e.target.closest('.flow-pause-btn');
+        if (pauseBtn) {
+          togglePauseFlow(decodeURIComponent(pauseBtn.getAttribute('data-flowid')));
+          return;
+        }
+        const editBtn = e.target.closest('.flow-edit-btn');
+        if (editBtn) {
+          const id = decodeURIComponent(editBtn.getAttribute('data-flowid'));
+          editFlow(id);
+          return;
+        }
+        const delBtn = e.target.closest('.flow-del-btn');
+        if (delBtn) {
+          const id = decodeURIComponent(delBtn.getAttribute('data-flowid'));
+          deleteFlow(id);
+        }
+      });
+    }
+
+    async function duplicateFlow(id) {
+      const res = await fetch('/api/flows/' + encodeURIComponent(id) + '/duplicate', {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.message || 'Не вдалося дублювати');
+        return;
+      }
+      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
+      renderState(st);
+      openFlowModal(data.flow);
+    }
+
+    async function togglePauseFlow(id) {
+      const res = await fetch('/api/flows/' + encodeURIComponent(id) + '/pause', {
+        method: 'POST',
+        credentials: 'same-origin'
+      });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.message || 'Не вдалося змінити паузу');
+        return;
+      }
+      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
+      renderState(st);
+    }
+
+    async function deleteFlow(id) {
+      if (!confirm('Видалити цю автоматизацію?')) return;
+      const res = await fetch('/api/flows/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        credentials: 'same-origin'
+      });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.message || 'Помилка');
+        return;
+      }
+      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
+      renderState(st);
+    }
+
+    async function initialLoad() {
+      const res = await fetch('/api/state', { credentials: 'same-origin' });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const state = await res.json();
+      renderState(state);
+      const idsToggle = document.getElementById('showChatIdsToggle');
+      if (idsToggle) {
+        idsToggle.checked = getShowChatIds();
+        idsToggle.onchange = () => {
+          setShowChatIds(idsToggle.checked);
+          fillSourcesMulti();
+          fillTargetSingle();
+          renderFlowList(cachedFlowsSnapshot);
+        };
+      }
+      const groupsToggle = document.getElementById('showOnlyGroupsToggle');
+      if (groupsToggle) {
+        groupsToggle.checked = getShowOnlyGroups();
+        groupsToggle.onchange = async () => {
+          setShowOnlyGroups(groupsToggle.checked);
+          await loadChats();
+        };
+      }
+      const flowDir = document.getElementById('flowDirection');
+      if (flowDir) {
+        flowDir.addEventListener('change', toggleFlowDirectionUi);
+      }
+      if (state.ready) {
+        try {
+          await loadChats();
+        } catch {
+          /* ignore */
+        }
+      }
+      const logsRes = await fetch('/api/logs', { credentials: 'same-origin' });
+      if (logsRes.status === 401) {
+        window.location.href = '/login.html';
+        return;
+      }
+      const logs = await logsRes.json();
+      logsEl.textContent = '';
       for (const item of logs) appendLog(item);
     }
 
     function connectEvents() {
-      const es = new EventSource('/api/events');
-
+      const es = new EventSource('/api/events', { withCredentials: true });
       es.addEventListener('state', (event) => {
         renderState(JSON.parse(event.data));
       });
-
       es.addEventListener('log', (event) => {
         appendLog(JSON.parse(event.data));
       });
-
-      es.onerror = () => {
-        console.warn('SSE disconnected, retrying...');
-      };
+      es.onerror = () => console.warn('SSE disconnected');
     }
 
     initialLoad();
     connectEvents();
+    bindFlowListClicks();
   </script>
 </body>
 </html>
