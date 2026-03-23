@@ -1,0 +1,39 @@
+---
+description: Onboarding context and startup file order
+alwaysApply: true
+---
+
+# Project Onboarding Rule
+
+Before implementing changes, read these files in order:
+
+1. `docs/STATUS_CONTEXT.md`
+2. `docs/PROJECT.md`
+3. `docs/CHANGELOG.md`
+4. `index.cjs`
+5. `public/index.html`
+6. `docker-compose.signal.yml`
+7. `signal-bridge/server.cjs`
+8. `data/flows.json`
+
+## Working conventions
+
+- Keep changes focused on requested scope; avoid unrelated refactors.
+- Update docs when behavior changes:
+  - `docs/CHANGELOG.md` (what changed)
+  - `docs/STATUS_CONTEXT.md` (current state / next actions)
+- After each completed stage, bump versions:
+  - `VERSION` by `+0.1`
+  - align `package.json` and `package-lock.json`.
+
+## Signal-specific notes
+
+- Signal integration depends on `SIGNAL_API_URL`.
+- Expected bridge endpoints:
+  - `GET /health`
+  - `GET /chats`
+  - `GET /messages`
+  - `POST /send`
+  - `POST /link`
+
+If Signal chat lists are empty, verify account linking first.

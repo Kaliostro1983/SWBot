@@ -132,6 +132,28 @@
       gap: 10px;
       margin-bottom: 20px;
     }
+    .subtabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .subtab-btn {
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .subtab-btn.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: rgba(45, 212, 191, 0.45);
+    }
+    .subview { display: none; }
+    .subview.active { display: block; }
     button, .btn {
       border: none;
       border-radius: 10px;
@@ -402,6 +424,19 @@
       padding: 8px;
     }
     select[multiple] option { padding: 6px 8px; }
+    .signal-console {
+      background: #020617;
+      color: #cbd5e1;
+      border-radius: 12px;
+      padding: 12px;
+      height: 170px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 12px;
+      border: 1px solid #1e293b;
+      margin-top: 12px;
+    }
     .modal-section {
       margin-bottom: 18px;
       padding-bottom: 14px;
@@ -448,53 +483,93 @@
     <main class="main">
       <section class="view active" id="view-integration">
         <h1 class="page-title">Інтеграція WhatsApp</h1>
-        <p class="hint" id="routingHint"></p>
-
-        <div class="toolbar">
-          <button type="button" class="btn btn-accent" onclick="callApi('/api/start')" title="Відновити клієнт після зупинки або першого запуску">Запустити бота</button>
-          <button type="button" class="btn btn-outline" onclick="callApi('/api/login')" title="Те саме, що запуск; якщо потрібна авторизація — з’явиться QR">Увійти (QR)</button>
-          <button type="button" class="btn btn-ghost" onclick="callApi('/api/stop')">Зупинити</button>
-          <button type="button" class="btn btn-ghost" onclick="callApi('/api/logout')">Вийти з акаунта</button>
-          <button type="button" class="btn btn-danger" onclick="resetSession()">Скинути сесію</button>
-        </div>
-        <p class="muted" style="font-size:13px; margin:-8px 0 16px; line-height:1.45;">
-          Після <strong>Зупинити</strong> натисніть <strong>Запустити бота</strong> — клієнт знову підніметься. Якщо сесія WhatsApp ще збережена локально, QR може не з’явитися. Кнопка «Увійти (QR)» викликає той самий запуск (зручно, коли очікуєш QR).
-        </p>
-
-        <div class="grid-2">
-          <div class="card">
-            <h2>Стан з’єднання</h2>
-            <p class="sub">Статус клієнта та останні події</p>
-            <div style="margin-bottom: 12px;"><span id="statusBadge">—</span></div>
-            <div class="stat"><span class="label">Авторизовано</span><span id="authenticated">—</span></div>
-            <div class="stat"><span class="label">Готовий</span><span id="ready">—</span></div>
-            <div class="stat"><span class="label">Остання помилка</span><span id="lastError">—</span></div>
-            <div class="stat"><span class="label">Режим маршрутизації</span><span id="routingMode">—</span></div>
-            <div class="stat"><span class="label">Захист панелі</span><span id="panelAuthNote">—</span></div>
-            <div class="stat"><span class="label">FastAPI за замовчуванням</span><span id="panelFastapiUrl">—</span></div>
-            <div class="stat"><span class="label">Чат відповідей (.env)</span><span id="panelTargetEnv">—</span></div>
-          </div>
-          <div class="card">
-            <h2>Акаунт</h2>
-            <p class="sub">Параметри після успішного входу</p>
-            <img id="qr" alt="QR" />
-            <div class="stat"><span class="label">WID</span><span id="clientWid">—</span></div>
-            <div class="stat"><span class="label">Ім’я (pushname)</span><span id="clientPushname">—</span></div>
-            <div class="stat"><span class="label">Платформа</span><span id="clientPlatform">—</span></div>
-          </div>
+        <div class="subtabs" id="integrationSubtabs">
+          <button type="button" class="subtab-btn active" data-subtab="general">Загальні</button>
+          <button type="button" class="subtab-btn" data-subtab="whatsapp">WhatsApp</button>
+          <button type="button" class="subtab-btn" data-subtab="signal">Signal</button>
         </div>
 
-        <div class="card">
-          <h2>Журнал</h2>
-          <p class="sub">Останні події сервера (SSE)</p>
-          <div id="logs"></div>
+        <div class="subview active" id="subview-general">
+          <p class="hint" id="routingHint"></p>
+          <div class="grid-2">
+            <div class="card">
+              <h2>Загальний стан</h2>
+              <p class="sub">Статус сервісу та налаштувань маршрутизації</p>
+              <div style="margin-bottom: 12px;"><span id="statusBadge">—</span></div>
+              <div class="stat"><span class="label">Остання помилка</span><span id="lastError">—</span></div>
+              <div class="stat"><span class="label">Режим маршрутизації</span><span id="routingMode">—</span></div>
+              <div class="stat"><span class="label">Захист панелі</span><span id="panelAuthNote">—</span></div>
+              <div class="stat"><span class="label">FastAPI за замовчуванням</span><span id="panelFastapiUrl">—</span></div>
+              <div class="stat"><span class="label">Чат відповідей (.env)</span><span id="panelTargetEnv">—</span></div>
+            </div>
+            <div class="card">
+              <h2>Signal</h2>
+              <p class="sub">Стан Signal bridge</p>
+              <div class="stat"><span class="label">Увімкнено</span><span id="signalEnabled">—</span></div>
+              <div class="stat"><span class="label">Працює</span><span id="signalRunning">—</span></div>
+              <div class="stat"><span class="label">Останній poll</span><span id="signalLastPollAt">—</span></div>
+              <div class="stat"><span class="label">Остання помилка</span><span id="signalLastError">—</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Журнал</h2>
+            <p class="sub">Останні події сервера (SSE)</p>
+            <div id="logs"></div>
+          </div>
+        </div>
+
+        <div class="subview" id="subview-whatsapp">
+          <div class="toolbar">
+            <button type="button" class="btn btn-accent" onclick="callApi('/api/start')" title="Відновити клієнт після зупинки або першого запуску">Запустити бота</button>
+            <button type="button" class="btn btn-outline" onclick="callApi('/api/login')" title="Те саме, що запуск; якщо потрібна авторизація — з’явиться QR">Увійти (QR)</button>
+            <button type="button" class="btn btn-ghost" onclick="callApi('/api/stop')">Зупинити</button>
+            <button type="button" class="btn btn-ghost" onclick="callApi('/api/logout')">Вийти з акаунта</button>
+            <button type="button" class="btn btn-danger" onclick="resetSession()">Скинути сесію</button>
+          </div>
+          <p class="muted" style="font-size:13px; margin:-8px 0 16px; line-height:1.45;">
+            Після <strong>Зупинити</strong> натисніть <strong>Запустити бота</strong> — клієнт знову підніметься. Якщо сесія WhatsApp ще збережена локально, QR може не з’явитися. Кнопка «Увійти (QR)» викликає той самий запуск (зручно, коли очікуєш QR).
+          </p>
+          <div class="grid-2">
+            <div class="card">
+              <h2>Стан WhatsApp</h2>
+              <p class="sub">Статус клієнта та останні події</p>
+              <div class="stat"><span class="label">Авторизовано</span><span id="authenticated">—</span></div>
+              <div class="stat"><span class="label">Готовий</span><span id="ready">—</span></div>
+            </div>
+            <div class="card">
+              <h2>Акаунт</h2>
+              <p class="sub">Параметри після успішного входу</p>
+              <img id="qr" alt="QR" />
+              <div class="stat"><span class="label">WID</span><span id="clientWid">—</span></div>
+              <div class="stat"><span class="label">Ім’я (pushname)</span><span id="clientPushname">—</span></div>
+              <div class="stat"><span class="label">Платформа</span><span id="clientPlatform">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="subview" id="subview-signal">
+          <div class="card">
+            <h2>Signal інтеграція</h2>
+            <p class="sub">На цьому етапі Signal працює через bridge API.</p>
+            <div class="stat"><span class="label">Bridge URL</span><span id="signalApiHint">Див. `SIGNAL_API_URL` у `.env`</span></div>
+            <div class="stat"><span class="label">Стан worker</span><span id="signalRunning2">—</span></div>
+            <div class="stat"><span class="label">Останній poll</span><span id="signalLastPollAt2">—</span></div>
+            <div class="stat"><span class="label">Остання помилка</span><span id="signalLastError2">—</span></div>
+
+            <div class="toolbar" style="margin-top:14px;">
+              <button type="button" class="btn btn-accent" id="signalLoginBtn" onclick="signalLoginQr()" title="Згенеруєте новий link та QR для підключення пристрою в Signal">Увійти (QR)</button>
+              <button type="button" class="btn btn-ghost" onclick="signalLoginQr()" title="Оновити QR link">Оновити QR</button>
+            </div>
+            <img id="signalQr" alt="Signal QR" style="display:none; width: 260px; border-radius: 12px; background: #fff; padding: 10px; margin-top: 8px;" />
+            <div id="signalConsole" class="signal-console"></div>
+          </div>
         </div>
       </section>
 
       <section class="view" id="view-flows">
         <h1 class="page-title">Автоматизації</h1>
         <p class="hint">
-          Сценарій: <strong>WhatsApp → FastAPI</strong>. Спочатку <strong>фільтри</strong> за ключовими словами та частотами (підрядки в тексті); якщо заповнені обидва поля — достатньо збігу в <strong>одному</strong> з них. Токен <code>*</code> у будь-якому з полів — без фільтрації.
+          Сценарій: <strong>WhatsApp/Signal → WhatsApp/Signal/FastAPI</strong>. Спочатку <strong>фільтри</strong> за ключовими словами та частотами (підрядки в тексті); якщо заповнені обидва поля — достатньо збігу в <strong>одному</strong> з них. Токен <code>*</code> у будь-якому з полів — без фільтрації.
           Якщо список автоматизацій <strong>не порожній</strong>, обробляються лише вказані чати-джерела. Якщо порожній — маршрут з <code>.env</code> (<code>SOURCE_CHAT</code> / <code>TARGET_CHAT</code>; опційно <code>SOURCE_FILTER_*</code>).
         </p>
         <div class="toolbar">
@@ -522,7 +597,7 @@
     <aside class="aside">
       <h3>Що тут відбувається?</h3>
       <p><strong>Інтеграція</strong> — підключення номера через QR (як WhatsApp Web), перегляд стану та параметрів сесії.</p>
-      <p><strong>Автоматизації</strong> — кілька чатів-джерел → <strong>FastAPI</strong>; фільтри за текстом і частотами (при двох полях — логіка <strong>АБО</strong>); відповіді <code>actions</code> — у <code>TARGET_CHAT</code> з <code>.env</code>.</p>
+      <p><strong>Автоматизації</strong> — напрямок задається як «Звідки → Куди»: WhatsApp/Signal → WhatsApp/Signal/FastAPI; фільтри за текстом і частотами (при двох полях — логіка <strong>АБО</strong>).</p>
       <ul>
         <li>Інші напрямки (WA→WA, Signal) — пізніші етапи.</li>
         <li>Окремий токен <code>*</code> у полі — пропуск усіх повідомлень без фільтрації по цьому автоматизації.</li>
@@ -545,19 +620,31 @@
             <input id="flowName" required maxlength="120" placeholder="Напр. Вхідний потік з групи А" />
           </div>
           <div class="field">
-            <label for="flowDirection">Напрямок пересилання</label>
-            <select id="flowDirection">
-              <option value="wa_fastapi">WhatsApp → FastAPI (RER)</option>
-              <option value="wa_wa">WhatsApp → WhatsApp</option>
-            </select>
+            <label>Напрямок пересилання</label>
+            <div class="field-row" style="align-items:center;">
+              <div class="field">
+                <select id="flowSourcePlatform">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="signal">Signal</option>
+                </select>
+              </div>
+              <div style="padding:0 8px; color: var(--muted); font-weight:700;">→</div>
+              <div class="field">
+                <select id="flowTargetPlatform">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="signal">Signal</option>
+                  <option value="fastapi">FastAPI</option>
+                </select>
+              </div>
+            </div>
             <p class="sub field-hint" id="flowHintFastapi">
               Endpoint і чат для <code>actions</code> — з <code>.env</code> (<code>FASTAPI_URL</code>, <code>TARGET_CHAT</code>).
             </p>
             <p class="sub field-hint" id="flowHintWa" style="display: none">
-              Текст і за потреби зображення пересилаються в обрану групу. FastAPI не викликається.
+              Повідомлення пересилаються у вибраний цільовий чат.
             </p>
           </div>
-          <div class="field">
+          <div class="field" id="flowSourcesWaWrap">
             <label for="flowSources">Звідки надсилати (оберіть кілька)</label>
             <div class="field-row">
               <div class="field">
@@ -565,7 +652,7 @@
               </div>
               <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити</button>
             </div>
-            <p class="sub field-hint">Потрібен готовий клієнт WhatsApp. Утримуйте Ctrl/Shift для кількох чатів.</p>
+            <p class="sub field-hint">Оберіть один або кілька чатів джерела (Ctrl/Shift для мультивибору).</p>
           </div>
           <div class="field" id="flowTargetWrap" style="display: none">
             <label for="flowTarget">Куди надсилати</label>
@@ -629,8 +716,9 @@
   <script>
     const logsEl = document.getElementById('logs');
     const qrEl = document.getElementById('qr');
-    let chatsCache = [];
+    let chatsCacheByPlatform = { whatsapp: [], signal: [] };
     let cachedFlowsSnapshot = [];
+    const signalConsoleEl = document.getElementById('signalConsole');
 
     const ICON_COPY =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
@@ -656,6 +744,13 @@
     function setShowOnlyGroups(on) {
       localStorage.setItem('wb_showOnlyGroups', on ? '1' : '0');
     }
+    function getIntegrationSubtab() {
+      const v = localStorage.getItem('wb_integrationSubtab');
+      return v || 'general';
+    }
+    function setIntegrationSubtab(name) {
+      localStorage.setItem('wb_integrationSubtab', name);
+    }
 
     function fmt(v) {
       return v === null || v === undefined || v === '' ? '—' : String(v);
@@ -672,6 +767,12 @@
       if (el) el.textContent = fmt(value);
     }
 
+    function appendSignalConsoleLine(msg) {
+      if (!signalConsoleEl) return;
+      signalConsoleEl.textContent += `[${new Date().toISOString()}] ${msg}\n`;
+      signalConsoleEl.scrollTop = signalConsoleEl.scrollHeight;
+    }
+
     function renderState(s) {
       setText('statusBadge', s.status);
       setText('authenticated', s.authenticated);
@@ -686,6 +787,14 @@
         setText('panelFastapiUrl', p.fastapiUrlDefault || '—');
         setText('panelTargetEnv', p.targetChatDefault || '—');
       }
+      const sig = s.signal || {};
+      setText('signalEnabled', sig.enabled);
+      setText('signalRunning', sig.running);
+      setText('signalLastPollAt', sig.lastPollAt);
+      setText('signalLastError', sig.lastError);
+      setText('signalRunning2', sig.running);
+      setText('signalLastPollAt2', sig.lastPollAt);
+      setText('signalLastError2', sig.lastError);
       const verEl = document.getElementById('appVersion');
       if (verEl && s.version) {
         const v = String(s.version).trim();
@@ -721,16 +830,26 @@
       renderFlowList(cachedFlowsSnapshot);
     }
 
-    function directionLabel(d) {
-      if (d === 'wa_wa') return 'WA → WhatsApp';
-      return 'WA → FastAPI';
+    function platformLabel(p) {
+      if (p === 'signal') return 'Signal';
+      if (p === 'fastapi') return 'FastAPI';
+      return 'WhatsApp';
+    }
+
+    function directionLabel(f) {
+      const s = f.sourcePlatform || (f.direction === 'wa_wa' || f.direction === 'wa_fastapi' ? 'whatsapp' : 'whatsapp');
+      const t = f.targetPlatform || (f.direction === 'wa_wa' ? 'whatsapp' : 'fastapi');
+      return `${platformLabel(s)} → ${platformLabel(t)}`;
     }
 
     function routeFooterLine(f) {
-      if (f.direction === 'wa_wa') {
+      if ((f.targetPlatform || '') === 'whatsapp' || f.direction === 'wa_wa') {
         const tid = f.targetChatId ? chatLabelById(f.targetChatId) : '—';
         const extra = f.sendAttachments ? ' · зображення' : '';
         return `Ціль: ${escapeHtml(tid)}${extra}`;
+      }
+      if ((f.targetPlatform || '') === 'signal') {
+        return `Ціль: ${escapeHtml(f.targetChatId || '—')} (Signal)`;
       }
       return 'FastAPI: з .env · Відповіді actions → TARGET_CHAT з .env';
     }
@@ -742,7 +861,9 @@
     }
 
     function chatLabelById(chatId) {
-      const c = chatsCache.find((x) => x.id === chatId);
+      const c =
+        chatsCacheByPlatform.whatsapp.find((x) => x.id === chatId) ||
+        chatsCacheByPlatform.signal.find((x) => x.id === chatId);
       if (c && c.name) return c.name;
       return chatId;
     }
@@ -803,10 +924,10 @@
           return `
         <div class="flow-card${paused ? ' paused' : ''}">
           <div>
-            <div class="dir-pill">${directionLabel(f.direction)}</div>
+            <div class="dir-pill">${directionLabel(f)}</div>
             <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}</h3>
             <div class="flow-meta">
-              Джерела:<br/>${srcLine}<br/>
+              Звідки надсилати:<br/>${srcLine}<br/>
               <span style="margin-top:8px;display:inline-block;">${filterSummaryLine(f)}</span><br/>
               <span style="margin-top:6px;display:inline-block;">${routeFooterLine(f)}</span>
             </div>
@@ -852,29 +973,102 @@
       await callApi('/api/reset-session');
     }
 
+    async function signalLoginQr() {
+      if (signalConsoleEl) signalConsoleEl.textContent = '';
+      appendSignalConsoleLine('Signal link: start request');
+      const btn = document.getElementById('signalLoginBtn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/signal/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ name: 'wa-bridge' })
+        });
+        appendSignalConsoleLine('Signal link: HTTP ' + res.status);
+        if (res.status === 401) {
+          window.location.href = '/login.html';
+          return;
+        }
+        const data = await res.json();
+        appendSignalConsoleLine('Signal link: ok=' + data.ok);
+        if (data.uri) appendSignalConsoleLine('Signal link: uri_len=' + String(data.uri).length);
+        if (data.message) appendSignalConsoleLine('Signal link: message=' + data.message);
+        if (!data.ok) {
+          alert(data.message || 'Не вдалося згенерувати QR для Signal');
+          return;
+        }
+        const img = document.getElementById('signalQr');
+        if (!img) return;
+        img.src = data.qrDataUrl;
+        img.style.display = 'block';
+        appendSignalConsoleLine('Signal link: QR shown');
+      } catch (e) {
+        appendSignalConsoleLine('Signal link: exception ' + (e?.message || String(e)));
+        alert(e?.message || 'Помилка при генерації QR для Signal');
+      } finally {
+        const btn2 = document.getElementById('signalLoginBtn');
+        if (btn2) btn2.disabled = false;
+      }
+    }
+
     document.querySelectorAll('.nav-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        const v = btn.getAttribute('data-nav');
+        if (!v) return;
         document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        const v = btn.getAttribute('data-nav');
         document.querySelectorAll('.view').forEach((view) => view.classList.remove('active'));
         document.getElementById('view-' + v).classList.add('active');
       });
     });
 
-    async function loadChats() {
+    function bindIntegrationSubtabs() {
+      const root = document.getElementById('integrationSubtabs');
+      if (!root || root.dataset.bound) return;
+      root.dataset.bound = '1';
+      const activate = (name) => {
+        root.querySelectorAll('.subtab-btn').forEach((x) => x.classList.remove('active'));
+        const btn = root.querySelector(`.subtab-btn[data-subtab="${name}"]`) || root.querySelector('.subtab-btn[data-subtab="general"]');
+        const next = btn?.getAttribute('data-subtab') || 'general';
+        if (btn) btn.classList.add('active');
+        document.querySelectorAll('#view-integration .subview').forEach((v) => v.classList.remove('active'));
+        const sv = document.getElementById('subview-' + next);
+        if (sv) sv.classList.add('active');
+        setIntegrationSubtab(next);
+      };
+      root.addEventListener('click', (e) => {
+        const b = e.target.closest('.subtab-btn');
+        if (!b) return;
+        const name = b.getAttribute('data-subtab');
+        if (!name) return;
+        activate(name);
+      });
+      activate(getIntegrationSubtab());
+    }
+
+    async function loadChatsForPlatform(platform) {
       const onlyGroups = getShowOnlyGroups() ? '1' : '0';
-      const res = await fetch('/api/chats?only_groups=' + onlyGroups, { credentials: 'same-origin' });
+      const res = await fetch('/api/chats?platform=' + encodeURIComponent(platform) + '&only_groups=' + onlyGroups, { credentials: 'same-origin' });
       if (res.status === 401) {
         window.location.href = '/login.html';
-        return;
+        return [];
       }
       const data = await res.json();
       if (!data.ok) {
         alert(data.message || 'Не вдалося отримати чати');
-        return;
+        return [];
       }
-      chatsCache = data.chats || [];
+      return data.chats || [];
+    }
+
+    async function loadChats() {
+      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
+      chatsCacheByPlatform[src] = await loadChatsForPlatform(src);
+      if (tgt !== 'fastapi') {
+        chatsCacheByPlatform[tgt] = await loadChatsForPlatform(tgt);
+      }
       fillSourcesMulti();
       fillTargetSingle();
       renderFlowList(cachedFlowsSnapshot);
@@ -885,8 +1079,11 @@
       if (!sel) return;
       const selected = sel.value;
       const showIds = getShowChatIds();
-      sel.innerHTML = '<option value="">— Оберіть групу —</option>';
-      for (const c of chatsCache) {
+      const tgt = document.getElementById('flowTargetPlatform')?.value || 'whatsapp';
+      const emptyLabel = tgt === 'signal' ? '— Оберіть Signal чат —' : '— Оберіть WhatsApp чат —';
+      sel.innerHTML = `<option value="">${emptyLabel}</option>`;
+      const list = chatsCacheByPlatform[tgt] || [];
+      for (const c of list) {
         const o = document.createElement('option');
         o.value = c.id;
         o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
@@ -898,15 +1095,19 @@
     }
 
     function toggleFlowDirectionUi() {
-      const dirEl = document.getElementById('flowDirection');
-      if (!dirEl) return;
-      const wa = dirEl.value === 'wa_wa';
+      const sourceSel = document.getElementById('flowSourcePlatform');
+      const targetSel = document.getElementById('flowTargetPlatform');
+      if (!sourceSel || !targetSel) return;
+      const src = sourceSel.value;
+      const tgt = targetSel.value;
+      const srcWrap = document.getElementById('flowSourcesWaWrap');
+      if (srcWrap) srcWrap.style.display = 'block';
       const wrap = document.getElementById('flowTargetWrap');
       const hFa = document.getElementById('flowHintFastapi');
       const hWa = document.getElementById('flowHintWa');
-      if (wrap) wrap.style.display = wa ? 'block' : 'none';
-      if (hFa) hFa.style.display = wa ? 'none' : 'block';
-      if (hWa) hWa.style.display = wa ? 'block' : 'none';
+      if (wrap) wrap.style.display = tgt === 'fastapi' ? 'none' : 'block';
+      if (hFa) hFa.style.display = tgt === 'fastapi' ? 'block' : 'none';
+      if (hWa) hWa.style.display = tgt === 'fastapi' ? 'none' : 'block';
     }
 
     function fillSourcesMulti() {
@@ -915,7 +1116,9 @@
       const selected = new Set(Array.from(sel.selectedOptions).map((o) => o.value));
       const showIds = getShowChatIds();
       sel.innerHTML = '';
-      for (const c of chatsCache) {
+      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      const list = chatsCacheByPlatform[src] || [];
+      for (const c of list) {
         const o = document.createElement('option');
         o.value = c.id;
         o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
@@ -930,10 +1133,10 @@
       document.getElementById('flowName').value = flow ? flow.name : '';
       document.getElementById('flowKeywords').value = flow ? (flow.keywords || '') : '';
       document.getElementById('flowFrequencies').value = flow ? (flow.frequencies || '') : '';
-      const dirSel = document.getElementById('flowDirection');
-      if (dirSel) {
-        dirSel.value = flow && flow.direction === 'wa_wa' ? 'wa_wa' : 'wa_fastapi';
-      }
+      const srcSel = document.getElementById('flowSourcePlatform');
+      const tgtSel = document.getElementById('flowTargetPlatform');
+      if (srcSel) srcSel.value = flow ? (flow.sourcePlatform || 'whatsapp') : 'whatsapp';
+      if (tgtSel) tgtSel.value = flow ? (flow.targetPlatform || (flow.direction === 'wa_wa' ? 'whatsapp' : 'fastapi')) : 'fastapi';
       const sendAtt = document.getElementById('flowSendAttachments');
       if (sendAtt) sendAtt.checked = flow ? Boolean(flow.sendAttachments) : false;
       toggleFlowDirectionUi();
@@ -974,27 +1177,29 @@
     async function submitFlow(ev) {
       ev.preventDefault();
       const id = document.getElementById('flowId').value;
+      const sourcePlatform = document.getElementById('flowSourcePlatform').value;
+      const targetPlatform = document.getElementById('flowTargetPlatform').value;
       const sel = document.getElementById('flowSources');
       const sourceChatIds = Array.from(sel.selectedOptions)
         .map((o) => o.value)
         .filter(Boolean);
       if (sourceChatIds.length === 0) {
-        alert('Оберіть хоча б один чат-джерело (утримуйте Ctrl або Shift).');
+        alert('Оберіть хоча б один чат-джерело.');
         return;
       }
-      const direction = document.getElementById('flowDirection').value;
       let targetChatId = null;
-      if (direction === 'wa_wa') {
+      if (targetPlatform === 'whatsapp' || targetPlatform === 'signal') {
         targetChatId = document.getElementById('flowTarget').value;
         if (!targetChatId) {
-          alert('Оберіть цільовий чат для напрямку WA → WhatsApp');
+          alert('Оберіть цільовий чат.');
           return;
         }
       }
       const body = {
         name: document.getElementById('flowName').value.trim(),
         sourceChatIds,
-        direction,
+        sourcePlatform,
+        targetPlatform,
         keywords: document.getElementById('flowKeywords').value,
         frequencies: document.getElementById('flowFrequencies').value,
         sendAttachments: document.getElementById('flowSendAttachments').checked,
@@ -1140,9 +1345,19 @@
           await loadChats();
         };
       }
-      const flowDir = document.getElementById('flowDirection');
-      if (flowDir) {
-        flowDir.addEventListener('change', toggleFlowDirectionUi);
+      const sourceSel = document.getElementById('flowSourcePlatform');
+      const targetSel = document.getElementById('flowTargetPlatform');
+      if (sourceSel) {
+        sourceSel.addEventListener('change', async () => {
+          toggleFlowDirectionUi();
+          await loadChats();
+        });
+      }
+      if (targetSel) {
+        targetSel.addEventListener('change', async () => {
+          toggleFlowDirectionUi();
+          await loadChats();
+        });
       }
       if (state.ready) {
         try {
@@ -1175,6 +1390,7 @@
     initialLoad();
     connectEvents();
     bindFlowListClicks();
+    bindIntegrationSubtabs();
   </script>
 </body>
 </html>

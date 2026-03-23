@@ -8,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const axios = require('axios');
 const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { exec, spawn } = require('child_process');
 
 const PORT = Number(process.env.PORT || 3001);
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://127.0.0.1:8000/api/ingest/whatsapp';
@@ -20,6 +21,8 @@ const PANEL_USER = String(process.env.PANEL_USER || '').trim();
 const PANEL_PASSWORD = String(process.env.PANEL_PASSWORD || '').trim();
 const SOURCE_FILTER_KEYWORDS = String(process.env.SOURCE_FILTER_KEYWORDS || '').trim();
 const SOURCE_FILTER_FREQUENCIES = String(process.env.SOURCE_FILTER_FREQUENCIES || '').trim();
+const SIGNAL_API_URL = String(process.env.SIGNAL_API_URL || '').trim();
+const SIGNAL_POLL_MS = Number(process.env.SIGNAL_POLL_MS || 5000);
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -79,6 +82,23 @@ function getSourceIds(flow) {
     return [flow.sourceChatId];
   }
   return [];
+}
+
+function inferPlatforms(flow) {
+  const d = String(flow?.direction || '').trim();
+  if (d === 'wa_wa') return { sourcePlatform: 'whatsapp', targetPlatform: 'whatsapp' };
+  if (d === 'wa_fastapi' || d === 'wa_rer') {
+    return { sourcePlatform: 'whatsapp', targetPlatform: 'fastapi' };
+  }
+  return {
+    sourcePlatform: String(flow?.sourcePlatform || 'whatsapp').trim() || 'whatsapp',
+    targetPlatform: String(flow?.targetPlatform || 'fastapi').trim() || 'fastapi'
+  };
+}
+
+function routeCode(flow) {
+  const p = inferPlatforms(flow);
+  return `${p.sourcePlatform}_${p.targetPlatform}`;
 }
 
 /** Токени фільтра: розділяються комою, крапкою з комою, новим рядком або ; */
@@ -146,6 +166,11 @@ function migrateFlowRecord(f) {
     out.direction = 'wa_fastapi';
   }
   if (!out.direction) out.direction = 'wa_fastapi';
+  if (out.sourcePlatform === undefined || out.targetPlatform === undefined) {
+    const p = inferPlatforms(out);
+    out.sourcePlatform = p.sourcePlatform;
+    out.targetPlatform = p.targetPlatform;
+  }
   if (out.keywords === undefined) out.keywords = '';
   if (out.frequencies === undefined) out.frequencies = '';
   if (out.sendAttachments === undefined) out.sendAttachments = false;
@@ -203,17 +228,31 @@ function normalizeAutomation(body, existingId) {
         ? String(ex.frequencies ?? '')
         : '';
 
-  let direction = 'wa_fastapi';
-  if (body.direction === 'wa_wa') {
-    direction = 'wa_wa';
-  } else if (body.direction === 'wa_fastapi' || body.direction === 'wa_rer') {
-    direction = 'wa_fastapi';
-  } else if (ex && ex.direction === 'wa_wa') {
-    direction = 'wa_wa';
+  let sourcePlatform = body.sourcePlatform !== undefined
+    ? String(body.sourcePlatform).trim()
+    : ex
+      ? String(ex.sourcePlatform || '')
+      : '';
+  let targetPlatform = body.targetPlatform !== undefined
+    ? String(body.targetPlatform).trim()
+    : ex
+      ? String(ex.targetPlatform || '')
+      : '';
+  if (!sourcePlatform || !targetPlatform) {
+    const p = inferPlatforms({ ...(ex || {}), direction: body.direction || ex?.direction });
+    if (!sourcePlatform) sourcePlatform = p.sourcePlatform;
+    if (!targetPlatform) targetPlatform = p.targetPlatform;
   }
+  if (!['whatsapp', 'signal'].includes(sourcePlatform)) sourcePlatform = 'whatsapp';
+  if (!['whatsapp', 'signal', 'fastapi'].includes(targetPlatform)) targetPlatform = 'fastapi';
+  const direction = sourcePlatform === 'whatsapp' && targetPlatform === 'whatsapp'
+    ? 'wa_wa'
+    : sourcePlatform === 'whatsapp' && targetPlatform === 'fastapi'
+      ? 'wa_fastapi'
+      : `${sourcePlatform}_${targetPlatform}`;
 
   let targetChatId = null;
-  if (direction === 'wa_wa') {
+  if (targetPlatform === 'whatsapp' || targetPlatform === 'signal') {
     if (body.targetChatId !== undefined && body.targetChatId !== null) {
       const t = String(body.targetChatId).trim();
       targetChatId = t || null;
@@ -226,6 +265,8 @@ function normalizeAutomation(body, existingId) {
     id: existingId || generateFlowId(),
     name,
     direction,
+    sourcePlatform,
+    targetPlatform,
     sourceChatIds,
     sourceChatId: sourceChatIds[0] || null,
     fastapiUrl: null,
@@ -254,9 +295,10 @@ function validateAutomation(f, allFlows, excludeId) {
   if (!f.sourceChatIds || f.sourceChatIds.length === 0) {
     return 'Оберіть хоча б один чат-джерело';
   }
-  if (f.direction === 'wa_wa') {
+  const p = inferPlatforms(f);
+  if (p.targetPlatform === 'whatsapp' || p.targetPlatform === 'signal') {
     const tid = String(f.targetChatId || '').trim();
-    if (!tid) return 'Оберіть цільовий чат для напрямку WA → WhatsApp';
+    if (!tid) return 'Оберіть цільовий чат для обраного напрямку';
     if (f.sourceChatIds.some((sid) => sid === tid)) {
       return 'Цільовий чат не може збігатися з чатом-джерелом';
     }
@@ -279,7 +321,8 @@ function validateAutomation(f, allFlows, excludeId) {
 }
 
 function isFastapiDirection(flow) {
-  return flow.direction === 'wa_fastapi' || flow.direction === 'wa_rer';
+  const p = inferPlatforms(flow);
+  return p.sourcePlatform === 'whatsapp' && p.targetPlatform === 'fastapi';
 }
 
 let flows = [];
@@ -373,6 +416,9 @@ let heartbeatTimer = null;
 let lastQr = null;
 let eventClients = [];
 let lastSendTs = 0;
+let signalPollTimer = null;
+let signalLastPollTs = 0;
+const signalSeenMessageIds = new Set();
 
 const state = {
   status: 'idle',
@@ -392,6 +438,13 @@ const state = {
   lastErrorAt: null,
   lastError: null,
   lastDisconnectReason: null,
+  signal: {
+    enabled: Boolean(SIGNAL_API_URL),
+    lastPollAt: null,
+    lastErrorAt: null,
+    lastError: null,
+    running: false
+  },
   counters: {
     received: 0,
     accepted: 0,
@@ -402,6 +455,67 @@ const state = {
   },
   logs: []
 };
+
+function parseSignalLinkUri(stdout) {
+  // CLI prints sgnl://linkdevice?... as plain text.
+  const m = String(stdout || '').match(/sgnl:\/\/[^\s'"]+/);
+  return m ? m[0] : null;
+}
+
+function dockerExecSignalLink(deviceName) {
+  const name = String(deviceName || 'wa-bridge').trim();
+  return new Promise((resolve, reject) => {
+    const proc = spawn('docker', ['exec', 'signal-cli-api', 'sh', '-lc', `signal-cli link -n ${JSON.stringify(name)}`], {
+      windowsHide: true
+    });
+    let stdoutBuf = '';
+    let stderrBuf = '';
+    let done = false;
+    const failTimer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      try { proc.kill(); } catch {}
+      reject(new Error('Таймаут генерації Signal link (не отримано sgnl:// URI)'));
+    }, 20000);
+
+    function finishOk(uri) {
+      if (done) return;
+      done = true;
+      clearTimeout(failTimer);
+      try { proc.kill(); } catch {}
+      resolve(uri);
+    }
+    function finishErr(message) {
+      if (done) return;
+      done = true;
+      clearTimeout(failTimer);
+      try { proc.kill(); } catch {}
+      reject(new Error(message));
+    }
+
+    proc.stdout.on('data', (chunk) => {
+      stdoutBuf += String(chunk || '');
+      const uri = parseSignalLinkUri(stdoutBuf);
+      if (uri) finishOk(uri);
+    });
+    proc.stderr.on('data', (chunk) => {
+      stderrBuf += String(chunk || '');
+      const uri = parseSignalLinkUri(stderrBuf);
+      if (uri) finishOk(uri);
+    });
+    proc.on('error', (err) => {
+      finishErr(err.message || 'Помилка запуску docker exec signal-cli link');
+    });
+    proc.on('close', (code) => {
+      if (done) return;
+      const uri = parseSignalLinkUri(stdoutBuf || stderrBuf);
+      if (uri) return finishOk(uri);
+      finishErr(
+        `signal-cli link завершився з кодом ${code}. ${stderrBuf || stdoutBuf || 'Без деталей'}`
+      );
+    });
+  });
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -470,6 +584,7 @@ function getPublicState() {
       fastapiUrlDefault: FASTAPI_URL,
       targetChatDefault: TARGET_CHAT || null
     },
+    signal: state.signal,
     version: APP_VERSION
   };
 }
@@ -480,6 +595,77 @@ function setStatus(status, patch = {}) {
   state.lastPulseAt = nowIso();
   writeHealth();
   broadcastEvent('state', getPublicState());
+}
+
+async function signalApiRequest(method, endpoint, data = undefined, params = undefined) {
+  if (!SIGNAL_API_URL) {
+    throw new Error('SIGNAL_API_URL is not configured');
+  }
+  const url = `${SIGNAL_API_URL.replace(/\/+$/, '')}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+  const res = await axios({
+    method,
+    url,
+    data,
+    params,
+    timeout: 30000
+  });
+  return res.data;
+}
+
+function normalizeSignalChatList(raw) {
+  const arr = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.chats)
+      ? raw.chats
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : [];
+  return arr
+    .map((x) => {
+      const id = String(x.id || x.chatId || x.uuid || x.number || '').trim();
+      const name = String(x.name || x.title || x.displayName || id).trim();
+      return id ? { id, name: name || id } : null;
+    })
+    .filter(Boolean);
+}
+
+function normalizeSignalMessages(raw) {
+  const arr = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.messages)
+      ? raw.messages
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : [];
+  return arr
+    .map((m) => {
+      const id = String(m.id || m.messageId || m.uuid || '').trim();
+      const chatId = String(m.chatId || m.source || m.groupId || '').trim();
+      const text = String(m.text || m.message || m.body || '').trim();
+      const author = m.author || m.sender || null;
+      const tsRaw = Number(m.timestamp || m.ts || Date.now());
+      if (!chatId) return null;
+      return {
+        id: id || `signal_${chatId}_${tsRaw}_${Math.random().toString(36).slice(2, 8)}`,
+        chatId,
+        text,
+        author,
+        timestamp: Number.isFinite(tsRaw) ? tsRaw : Date.now()
+      };
+    })
+    .filter(Boolean);
+}
+
+async function fetchSignalChats() {
+  const raw = await signalApiRequest('get', '/chats');
+  return normalizeSignalChatList(raw);
+}
+
+async function sendSignalMessage(chatId, text) {
+  await signalApiRequest('post', '/send', {
+    chatId,
+    text
+  });
 }
 
 function writeHealth() {
@@ -603,11 +789,162 @@ async function forwardWaToWa(flow, msg) {
   }
 }
 
+async function forwardWaToSignal(flow, msg) {
+  const target = String(flow.targetChatId || '').trim();
+  if (!target) {
+    pushLog('ERROR', 'WA→Signal: немає targetChatId', { flowId: flow.id });
+    return;
+  }
+  const text = String(msg.body || '').trim();
+  if (!text) {
+    pushLog('INFO', 'WA→Signal: порожній текст, пропуск', { flowId: flow.id });
+    return;
+  }
+  await sendSignalMessage(target, text);
+  state.lastSendAt = nowIso();
+  state.counters.sent += 1;
+  pushLog('INFO', 'Forward sent (signal)', { targetChat: target, length: text.length });
+}
+
 async function postToFastAPI(payload, url = FASTAPI_URL) {
   const response = await axios.post(url, payload, { timeout: 30000 });
   state.lastPostAt = nowIso();
   state.counters.posted += 1;
   return response.data;
+}
+
+async function processSignalIncomingMessage(message) {
+  const chatId = message.chatId;
+  const rawText = String(message.text || '').trim();
+  const flow = flows.find((f) => {
+    const p = inferPlatforms(f);
+    return p.sourcePlatform === 'signal' && getSourceIds(f).includes(chatId);
+  });
+  if (!flow) return;
+
+  state.lastEventAt = nowIso();
+  state.lastMessageAt = nowIso();
+  state.counters.received += 1;
+
+  if (flow.paused) {
+    state.counters.ignored += 1;
+    return;
+  }
+  if (!passesFlowContentFilters(flow, rawText)) {
+    state.counters.ignored += 1;
+    return;
+  }
+  state.counters.accepted += 1;
+
+  const p = inferPlatforms(flow);
+  if (p.targetPlatform === 'signal') {
+    const target = String(flow.targetChatId || '').trim();
+    if (!target) return;
+    if (!rawText) return;
+    await sendSignalMessage(target, rawText);
+    state.lastSendAt = nowIso();
+    state.counters.sent += 1;
+    pushLog('INFO', 'Signal→Signal sent', { flowId: flow.id, targetChat: target });
+    return;
+  }
+
+  if (p.targetPlatform === 'whatsapp') {
+    const target = String(flow.targetChatId || '').trim();
+    if (!target) return;
+    if (!rawText) return;
+    if (!client || !state.ready) {
+      pushLog('ERROR', 'Signal→WA: клієнт WhatsApp не готовий', { flowId: flow.id });
+      return;
+    }
+    await sendWithRateLimit(target, rawText);
+    pushLog('INFO', 'Signal→WA sent', { flowId: flow.id, targetChat: target });
+    return;
+  }
+
+  if (p.targetPlatform === 'fastapi') {
+    const ingestUrl = flow.fastapiUrl || FASTAPI_URL;
+    const payload = {
+      platform: 'signal',
+      chat_id: chatId,
+      chat_name: null,
+      message_id: message.id,
+      author: message.author || null,
+      published_at_platform: new Date(message.timestamp).toISOString(),
+      text: rawText,
+      allow_send: true,
+      flow_id: flow.id,
+      flow_name: flow.name
+    };
+    let apiResult;
+    try {
+      apiResult = await postToFastAPI(payload, ingestUrl);
+    } catch (err) {
+      const ax = err.response;
+      pushLog('ERROR', 'Signal→FastAPI POST failed', {
+        message: err.message,
+        status: ax?.status,
+        body: ax?.data ?? null
+      });
+      return;
+    }
+    const actions = Array.isArray(apiResult?.actions) ? apiResult.actions : [];
+    if (actions.length === 0) return;
+    const targetChat = flow.targetChatId || TARGET_CHAT;
+    if (!targetChat) return;
+    if (!client || !state.ready) {
+      pushLog('ERROR', 'Signal→FastAPI actions: клієнт WhatsApp не готовий', { flowId: flow.id });
+      return;
+    }
+    for (const action of actions) {
+      if (action?.type !== 'send_message') continue;
+      const txt = String(action?.text || '').trim();
+      if (!txt) continue;
+      await sendWithRateLimit(targetChat, txt);
+    }
+  }
+}
+
+async function pollSignalMessages() {
+  if (!SIGNAL_API_URL) return;
+  try {
+    const raw = await signalApiRequest('get', '/messages', undefined, {
+      since: signalLastPollTs || undefined
+    });
+    const msgs = normalizeSignalMessages(raw);
+    state.signal.lastPollAt = nowIso();
+    signalLastPollTs = Date.now();
+    for (const m of msgs) {
+      if (signalSeenMessageIds.has(m.id)) continue;
+      signalSeenMessageIds.add(m.id);
+      if (signalSeenMessageIds.size > 5000) {
+        const first = signalSeenMessageIds.values().next().value;
+        signalSeenMessageIds.delete(first);
+      }
+      await processSignalIncomingMessage(m);
+    }
+  } catch (error) {
+    state.signal.lastErrorAt = nowIso();
+    state.signal.lastError = error.message;
+    pushLog('ERROR', 'Signal polling failed', { message: error.message });
+  }
+}
+
+function startSignalWorker() {
+  if (!SIGNAL_API_URL || signalPollTimer) return;
+  state.signal.running = true;
+  pollSignalMessages().catch(() => {});
+  signalPollTimer = setInterval(() => {
+    pollSignalMessages().catch(() => {});
+  }, Math.max(1000, SIGNAL_POLL_MS));
+  pushLog('INFO', 'Signal worker started', { pollMs: Math.max(1000, SIGNAL_POLL_MS) });
+}
+
+function stopSignalWorker() {
+  if (signalPollTimer) {
+    clearInterval(signalPollTimer);
+    signalPollTimer = null;
+  }
+  state.signal.running = false;
 }
 
 /** Пересилання вкладення у цільовий чат (FastAPI-гілка). */
@@ -713,7 +1050,10 @@ function attachClientEvents(instance) {
 
       let flow = null;
       if (flows.length > 0) {
-        flow = flows.find((f) => getSourceIds(f).includes(chatId));
+        flow = flows.find((f) => {
+          const p = inferPlatforms(f);
+          return p.sourcePlatform === 'whatsapp' && getSourceIds(f).includes(chatId);
+        });
         if (!flow) {
           state.counters.ignored += 1;
           return;
@@ -735,6 +1075,8 @@ function attachClientEvents(instance) {
           id: '_env',
           name: 'Змінні середовища',
           direction: 'wa_fastapi',
+          sourcePlatform: 'whatsapp',
+          targetPlatform: 'fastapi',
           sourceChatId: SOURCE_CHAT,
           sourceChatIds: [SOURCE_CHAT],
           targetChatId: TARGET_CHAT || null,
@@ -772,6 +1114,8 @@ function attachClientEvents(instance) {
         flowId: flow.id,
         flowName: flow.name,
         direction: flow.direction,
+        sourcePlatform: inferPlatforms(flow).sourcePlatform,
+        targetPlatform: inferPlatforms(flow).targetPlatform,
         chatId,
         fromMe: msg.fromMe,
         allowSend,
@@ -781,13 +1125,19 @@ function attachClientEvents(instance) {
         messageId: msg.id?._serialized || null
       });
 
-      if (flow.direction === 'wa_wa') {
+      const rCode = routeCode(flow);
+      if (rCode === 'whatsapp_whatsapp') {
         await forwardWaToWa(flow, msg);
         return;
       }
 
+      if (rCode === 'whatsapp_signal') {
+        await forwardWaToSignal(flow, msg);
+        return;
+      }
+
       if (!isFastapiDirection(flow)) {
-        pushLog('ERROR', 'Невідомий напрямок автоматизації', {
+        pushLog('ERROR', 'Непідтримуваний напрямок для WA-події', {
           flowId: flow.id,
           direction: flow.direction
         });
@@ -939,6 +1289,7 @@ async function startBot() {
 
     attachClientEvents(client);
     await client.initialize();
+    startSignalWorker();
 
     pushLog('INFO', 'Bot initialize requested', { headless: HEADLESS });
     return { ok: true, message: 'Bot started' };
@@ -973,6 +1324,7 @@ async function stopBot() {
     state.clientInfo = null;
 
     setStatus('stopped');
+    stopSignalWorker();
     pushLog('INFO', 'Bot stopped');
 
     return { ok: true, message: 'Bot stopped' };
@@ -1007,6 +1359,7 @@ async function logoutBot() {
     state.clientInfo = null;
 
     setStatus('logged_out');
+    stopSignalWorker();
     pushLog('INFO', 'Logged out');
 
     return { ok: true, message: 'Logged out' };
@@ -1026,6 +1379,7 @@ async function resetSession() {
     if (client) {
       await stopBot();
     }
+    stopSignalWorker();
 
     deleteDirIfExists(AUTH_DIR);
     deleteDirIfExists(CACHE_DIR);
@@ -1100,7 +1454,44 @@ app.post('/api/reset-session', async (req, res) => {
   res.json(await resetSession());
 });
 
+app.post('/api/signal/link', async (req, res) => {
+  try {
+    const deviceName = String(req.body?.name || 'wa-bridge').trim();
+    pushLog('INFO', 'Signal link request', { deviceName });
+    if (SIGNAL_API_URL) {
+      try {
+        const data = await signalApiRequest('post', '/link', { name: deviceName });
+        if (data?.ok && data?.qrDataUrl) {
+          return res.json({ ok: true, uri: null, qrDataUrl: data.qrDataUrl });
+        }
+        throw new Error(data?.message || 'Signal bridge /link returned invalid payload');
+      } catch (e) {
+        pushLog('ERROR', 'Signal link via bridge failed, fallback to docker exec', { message: e.message });
+      }
+    }
+    const uri = await dockerExecSignalLink(deviceName);
+    const qrDataUrl = await QRCode.toDataURL(uri, { width: 420, margin: 2 });
+    res.json({ ok: true, uri, qrDataUrl });
+  } catch (error) {
+    pushLog('ERROR', 'Signal link request failed', { message: error.message || String(error) });
+    res.status(500).json({ ok: false, message: error.message || String(error) });
+  }
+});
+
 app.get('/api/chats', async (req, res) => {
+  const platform = String(req.query.platform || 'whatsapp').trim();
+  if (platform !== 'whatsapp') {
+    if (platform === 'signal') {
+      if (!SIGNAL_API_URL) return res.json({ ok: true, chats: [] });
+      try {
+        const list = await fetchSignalChats();
+        return res.json({ ok: true, chats: list });
+      } catch (error) {
+        return res.status(500).json({ ok: false, message: error.message });
+      }
+    }
+    return res.json({ ok: true, chats: [] });
+  }
   if (!client || !state.ready) {
     return res.status(503).json({ ok: false, message: 'Клієнт WhatsApp не готовий. Спочатку увійдіть через QR.' });
   }

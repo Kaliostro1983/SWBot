@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-bot",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "main": "index.cjs",
   "type": "commonjs",
   "scripts": {
@@ -15,3 +15,5 @@
     "whatsapp-web.js": "^1.26.0"
   }
 }
+
+

@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-03-23 — 0.6: Signal QR login
+
+- Панель: вкладка **Інтеграція → Signal** отримала кнопку **«Увійти (QR)»** і QR-картинку.
+- Backend: додано endpoint **`POST /api/signal/link`**, який запускає `signal-cli link` у контейнері `signal-cli-api` і повертає `uri` та `qrDataUrl`.
+
+## 2026-03-23 — 0.5: основа Signal + новий селектор напрямку
+
+- Панель: напрямок тепер задається двома випадаючими меню `Звідки` і `Куди` (WhatsApp/Signal -> WhatsApp/Signal/FastAPI) зі стрілкою між ними.
+- Форма автоматизації: поля перейменовано на `Звідки надсилати` і `Куди надсилати`; блоки вибору чатів динамічно перемикаються за платформою.
+- Додано сторінку `Налаштування` з контейнером `Налаштування чатів`: `Показувати ID` (off за замовчуванням) і `Показувати у WhatsApp лише групи` (on за замовчуванням).
+- API `GET /api/chats`: додано параметри `platform` і `only_groups`; для `platform=signal` повертається список із Signal bridge API (`GET /chats`).
+- Backend: у flow додано поля `sourcePlatform` / `targetPlatform`; маршрут визначається за платформами, з міграцією легасі `direction` (`wa_*`).
+- Signal transport: polling `GET /messages` та надсилання `POST /send`; підтримано маршрути `Signal -> WhatsApp`, `Signal -> FastAPI`, `Signal -> Signal`, а також `WhatsApp -> Signal` (текст).
+- Версія: `VERSION` 0.5, `package.json` 0.5.0.
+
+---
+
 ## 2025-03-22 — 0.4: WA→WA та медіа
 
 - Напрямок **WhatsApp → WhatsApp** (`direction: wa_wa`): поле **цільовий чат** (`targetChatId`), без FastAPI; фільтри ключових слів/частот як раніше.

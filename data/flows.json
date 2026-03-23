@@ -16,7 +16,9 @@
     "sendAttachments": true,
     "coordinatesScreenshot": false,
     "analysisPlugin": null,
-    "outdatedDiff": null
+    "outdatedDiff": null,
+    "sourcePlatform": "whatsapp",
+    "targetPlatform": "whatsapp"
   },
   {
     "id": "flow_1774201805108_mo8gc9zp",
@@ -35,6 +37,8 @@
     "sendAttachments": false,
     "coordinatesScreenshot": false,
     "analysisPlugin": null,
-    "outdatedDiff": null
+    "outdatedDiff": null,
+    "sourcePlatform": "whatsapp",
+    "targetPlatform": "fastapi"
   }
 ]
