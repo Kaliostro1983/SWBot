@@ -891,11 +891,13 @@
     const logsEl = document.getElementById('logs');
     const qrEl = document.getElementById('qr');
     let chatsCacheByPlatform = { whatsapp: [], signal: [] };
+    let recentSourceChatsByPlatform = { whatsapp: [], signal: [] };
     let chatsCacheAtByPlatform = { whatsapp: 0, signal: 0 };
     let cachedFlowsSnapshot = [];
     let flowChatRefsById = {};
     const CHATS_CACHE_TTL_MS = 5 * 60 * 1000;
     let flowSelectedSourceIds = new Set();
+    let flowSelectedSourceChatKey = '';
     let flowTargetChatId = '';
     const signalConsoleEl = document.getElementById('signalConsole');
     const signalLinkAlertEl = document.getElementById('signalLinkAlert');
@@ -1452,6 +1454,18 @@
       throw lastErr || new Error('Не вдалося отримати чати');
     }
 
+    async function loadRecentDirectoryChats(platform) {
+      const endpoint = '/api/chat-directory/recent?platform=' + encodeURIComponent(platform);
+      const res = await fetch(endpoint, { credentials: 'same-origin' });
+      if (res.status === 401) {
+        window.location.href = '/login.html';
+        return [];
+      }
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.message || 'Не вдалося отримати recent chats');
+      return Array.isArray(data.chats) ? data.chats : [];
+    }
+
     async function ensureChatsLoaded(platform, force = false) {
       const now = Date.now();
       const cached = chatsCacheByPlatform[platform] || [];
@@ -1487,6 +1501,9 @@
         setFlowStatusFor('target', 'info', platformLoadingMessage(tgt));
       }
       try {
+        if (src === 'signal') {
+          recentSourceChatsByPlatform.signal = await loadRecentDirectoryChats('signal');
+        }
         await ensureChatsLoaded(src, force);
         if (tgt !== 'fastapi') {
           await ensureChatsLoaded(tgt, force);
@@ -1529,6 +1546,22 @@
         .slice(0, 200);
     }
 
+    function getFilteredRecentSourceChats(platform, query) {
+      const q = String(query || '').trim().toLowerCase();
+      const list = recentSourceChatsByPlatform[platform] || [];
+      if (!q) return list.slice(0, 200);
+      return list.filter((c) => {
+        const hay = [
+          c.manualLabel || '',
+          c.displayName || '',
+          c.chatType || '',
+          c.platform || '',
+          c.lastMessagePreview || ''
+        ].join(' ').toLowerCase();
+        return hay.includes(q);
+      }).slice(0, 200);
+    }
+
     function toggleFlowDirectionUi() {
       const sourceSel = document.getElementById('flowSourcePlatform');
       const targetSel = document.getElementById('flowTargetPlatform');
@@ -1537,6 +1570,12 @@
       const tgt = targetSel.value;
       const srcWrap = document.getElementById('flowSourcesWaWrap');
       if (srcWrap) srcWrap.style.display = 'block';
+      const srcLabel = document.querySelector('label[for="flowSources"]');
+      if (srcLabel) {
+        srcLabel.textContent = src === 'signal'
+          ? 'Звідки надсилати (оберіть чат з recent списку)'
+          : 'Звідки надсилати (оберіть кілька)';
+      }
       const wrap = document.getElementById('flowTargetWrap');
       const hFa = document.getElementById('flowHintFastapi');
       const hWa = document.getElementById('flowHintWa');
@@ -1566,6 +1605,31 @@
       const showIds = getShowChatIds();
       const query = String(search.value || '').trim();
       const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      if (src === 'signal') {
+        const list = getFilteredRecentSourceChats('signal', query);
+        const selected = list.find((x) => String(x.chatKey || '') === String(flowSelectedSourceChatKey || ''));
+        const selectedLabel = selected
+          ? (selected.manualLabel || selected.displayName || 'Невідомий чат')
+          : '';
+        box.innerHTML = selectedLabel
+          ? `<span class="chip">${escapeHtml(selectedLabel)}<button type="button" data-source-chat-key-remove="1" aria-label="Прибрати">×</button></span>`
+          : '';
+        dd.innerHTML = list
+          .map((c) => {
+            const title = c.manualLabel || c.displayName || 'Невідомий чат';
+            const typeLabel = c.chatType === 'direct' ? 'direct' : 'group';
+            const lastSeen = c.lastSeenAt ? new Date(c.lastSeenAt).toLocaleString('uk-UA') : '—';
+            const preview = String(c.lastMessagePreview || '').trim();
+            const selectedClass = c.chatKey === flowSelectedSourceChatKey ? ' selected' : '';
+            const base = `<div><strong>${escapeHtml(title)}</strong></div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(c.platform)} · ${escapeHtml(typeLabel)} · ${escapeHtml(lastSeen)}</div>`;
+            const adv = showIds ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">debug: ${escapeHtml(c.chatKey || '')}</div>` : '';
+            const p = preview ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${escapeHtml(preview.slice(0, 90))}</div>` : '';
+            return `<div class="chat-option${selectedClass}" data-source-chat-key="${encodeURIComponent(c.chatKey || '')}">${base}${p}${adv}</div>`;
+          })
+          .join('');
+        syncSourceHiddenSelect();
+        return;
+      }
       const list = getFilteredChats(src, query);
       box.innerHTML = Array.from(flowSelectedSourceIds || [])
         .map((id) => {
@@ -1641,6 +1705,7 @@
       const sendAtt = document.getElementById('flowSendAttachments');
       if (sendAtt) sendAtt.checked = flow ? Boolean(flow.sendAttachments) : false;
       flowSelectedSourceIds = new Set(flow ? sourceList(flow) : []);
+      flowSelectedSourceChatKey = flow?.sourceChatKey || '';
       flowTargetChatId = flow?.targetChatId || '';
       toggleFlowDirectionUi();
       renderSourcePicker();
@@ -1663,7 +1728,11 @@
       const targetPlatform = document.getElementById('flowTargetPlatform').value;
       const sel = document.getElementById('flowSources');
       const sourceChatIds = Array.from(flowSelectedSourceIds || []);
-      if (sourceChatIds.length === 0) {
+      if (sourcePlatform === 'signal' && !flowSelectedSourceChatKey) {
+        alert('Оберіть чат-джерело Signal зі списку recent.');
+        return;
+      }
+      if (sourcePlatform !== 'signal' && sourceChatIds.length === 0) {
         alert('Оберіть хоча б один чат-джерело.');
         return;
       }
@@ -1677,8 +1746,9 @@
       }
       const body = {
         name: document.getElementById('flowName').value.trim(),
-        sourceChatIds,
-        sourceChatRefs: sourceChatIds.map((id) => ({ id, name: chatLabelById(id) })),
+        sourceChatKey: sourcePlatform === 'signal' ? flowSelectedSourceChatKey : null,
+        sourceChatIds: sourcePlatform === 'signal' ? [] : sourceChatIds,
+        sourceChatRefs: sourcePlatform === 'signal' ? [] : sourceChatIds.map((id) => ({ id, name: chatLabelById(id) })),
         sourcePlatform,
         targetPlatform,
         keywords: document.getElementById('flowKeywords').value,
@@ -1889,6 +1959,7 @@
       if (sourceSel) {
         sourceSel.addEventListener('change', async () => {
           flowSelectedSourceIds = new Set();
+          flowSelectedSourceChatKey = '';
           toggleFlowDirectionUi();
           await loadChats(false);
         });
@@ -1920,6 +1991,12 @@
       if (chipsBox && !chipsBox.dataset.bound) {
         chipsBox.dataset.bound = '1';
         chipsBox.addEventListener('click', (e) => {
+          const byKey = e.target.closest('button[data-source-chat-key-remove]');
+          if (byKey) {
+            flowSelectedSourceChatKey = '';
+            renderSourcePicker();
+            return;
+          }
           const btn = e.target.closest('button[data-chip-id]');
           if (!btn) return;
           const id = decodeURIComponent(btn.getAttribute('data-chip-id') || '');
@@ -1942,6 +2019,13 @@
       if (sourcesDropdown && !sourcesDropdown.dataset.bound) {
         sourcesDropdown.dataset.bound = '1';
         sourcesDropdown.addEventListener('click', (e) => {
+          const byKey = e.target.closest('.chat-option[data-source-chat-key]');
+          if (byKey) {
+            const chatKey = decodeURIComponent(byKey.getAttribute('data-source-chat-key') || '');
+            flowSelectedSourceChatKey = chatKey || '';
+            renderSourcePicker();
+            return;
+          }
           const item = e.target.closest('.chat-option[data-source-id]');
           if (!item) return;
           const id = decodeURIComponent(item.getAttribute('data-source-id') || '');

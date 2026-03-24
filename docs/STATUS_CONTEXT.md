@@ -1,6 +1,8 @@
 # Статус проєкту та план робіт
 
-Оновлено: 2026-03-23
+Оновлено: 2026-03-24
+
+Поточна версія збірки: **1.0** (`VERSION`, узгоджено з `package.json` **1.0.0**).
 
 ## Що вже зроблено
 
@@ -36,6 +38,11 @@
 - Увімкнено авто-ремап Signal джерел: при зміні Signal ID після relink система намагається автоматично оновити `sourceChatIds` за назвами чатів із `chat-directory`, щоб уникати ручного перевибору в кожній automation.
 - Стартова політика Signal переведена у безпечний режим: без автоперелінкування за замовчуванням, лише `linked`-перевірка з ретраями; новий QR запускається вручну.
 - Структуру Signal-джерел у flow посилено до dual-id/aliases: для `sourceChatRefs` зберігаються `aliases[]`, а маршрутизація порівнює вхідні `chatCandidates` з alias-набором, що знижує ризик `no_flow_match` після relink/зміни формату Signal ID.
+- Додано окремий Chat Directory layer (`src/chat-directory/chatDirectory.js`) із внутрішніми стабільними `chatKey` (`<platform>:chat:<id>`), щоб flow могли посилатися на чат не через сирі alias/UUID.
+- Маршрутизація підтримує `sourceChatKey`: коли ключ присутній, source-match іде через aliases запису в chat-directory; aliases-матчинг залишено як backward-compatible fallback для старих flow без `sourceChatKey`.
+- Вхідні Signal/WhatsApp повідомлення тепер спочатку upsert-яться в chat-directory (оновлення `lastSeenAt`, `lastMessagePreview`, aliases), після чого проходять routing.
+- Додано API recent-чатів із chat-directory (`GET /api/chat-directory/recent`) для source picker у панелі без показу raw aliases у основному UI.
+- Для `sourcePlatform=signal` у модалці automation джерело обирається за `sourceChatKey` із recent-списку (назва/тип/last seen/preview), а не через ручні alias/UUID.
 
 ## Що ще потрібно зробити
 

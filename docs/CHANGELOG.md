@@ -4,8 +4,26 @@
 
 ---
 
+## 2026-03-24 — 1.0: реліз після фіксації змін
+
+- Версія збірки: `VERSION` **1.0**, `package.json` / `package-lock.json` — **1.0.0**.
+- У зведення включено Chat Directory layer, роутинг через `sourceChatKey`, API `GET /api/chat-directory/recent` та Signal source picker у панелі (обрання джерела за recent-записами без raw aliases в основному UI).
+
 ## 2026-03-23 — Signal link стабілізація (bridge-first)
 
+- Додано endpoint `GET /api/chat-directory/recent` для отримання recent-чатів із chat-directory за платформою (`signal`/`whatsapp`) у безпечному UI-форматі без aliases за замовчуванням; aliases повертаються лише в debug-режимі (`?debug=1`).
+- Модалка автоматизацій (`public/index.html`) для `sourcePlatform=signal` тепер використовує source picker із recent chat directory записів (`chatKey`) замість ручної роботи з raw aliases/ID.
+- Для source picker Signal у dropdown додано картку чату: назва (`manualLabel/displayName`), платформа, тип (`direct/group`), `lastSeenAt`, короткий preview останнього повідомлення.
+- При збереженні Signal-flow панель передає `sourceChatKey`; бекенд зберігає його в flow і використовує chat-directory для резолву джерела (backward compatibility з aliases збережено).
+
+- Додано окремий backend-модуль каталогу чатів `src/chat-directory/chatDirectory.js` з персистентним форматом `data/chat-directory.json` (`entries[]` + `chatKey`), де внутрішній ключ чату не залежить від сирих Signal UUID/phone.
+- У каталозі реалізовано API: `loadChatDirectory`, `saveChatDirectory`, `upsertChatFromMessage`, `findChatByMessage`, `addAliasesToChat`, `listRecentChats`; додано автоматичну міграцію legacy-формату `platform -> { chatId: name }`.
+- Routing оновлено до режиму сумісності: якщо у flow є `sourceChatKey` — match виконується через aliases відповідного запису з chat-directory; якщо `sourceChatKey` відсутній — лишається fallback на aliases (`buildFlowAliases`).
+- Для вхідних Signal/WhatsApp повідомлень додано авто-upsert у chat-directory до routing, щоб aliases накопичувалися з реального трафіку.
+- Додано логи: створення нового запису chat-directory, merge нових aliases, та окремий лог успішного match по `sourceChatKey`.
+
+- Додано діагностичний режим `SIGNAL_RAW_CAPTURE=1`: усі вхідні сирі Signal events пишуться в `logs/signal_raw.ndjson` (NDJSON, по одному JSON-рядку), включно з дубльованими полями `chatId`, `chatCandidates`, `message`, `sender`, `groupInfo`. Захоплення виконується до routing/filtering і не блокує сервіс при помилках файлу.
+- Проведено структуризацію Signal-контуру в `index.cjs` без зміни поведінки: виділено явні функції `signalHealthCheck()`, `signalLinkedCheck()`, `fetchSignalChats()`, `fetchSignalMessages()`, `sendSignalMessage()`, `normalizeSignalMessage(raw)`; polling `/messages` переведено на новий intake-виклик.
 - Для спрощення прив’язки source-чатів Signal додано список “нещодавно активних чатів” у state (`signal.recentIncomingChats`): у модалці `Звідки надсилати` ці чати підмішуються на початок списку, щоб вибирати джерело без ручного пошуку `chatId` у логах.
 - Додано прапорець `AUTO_SIGNAL_SOURCE_AUTOREMAP` (за замовчуванням `0`). У стандартному режимі source-чати Signal не ремапляться автоматично, щоб пересилання було строго з чату, обраного користувачем у налаштуваннях automation.
 - `Налаштування -> Безпека` спрощено до 2 полів (`Логін`, `Пароль`). Якщо обидва поля порожні, авторизація панелі вимикається (вхід без логіна/пароля); якщо заповнений лише один — повертається валідаційна помилка.

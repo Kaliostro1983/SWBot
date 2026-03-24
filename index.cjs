@@ -9,6 +9,8 @@ const axios = require('axios');
 const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { exec, spawn } = require('child_process');
+const { buildChatCandidates, buildFlowAliases, normalizeChatId } = require('./src/normalization/chatIdentity');
+const chatDirectoryStore = require('./src/chat-directory/chatDirectory');
 
 const PORT = Number(process.env.PORT || 3001);
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://127.0.0.1:8000/api/ingest/whatsapp';
@@ -39,18 +41,19 @@ const AUTO_SIGNAL_SOURCE_AUTOREMAP = String(
 const CHROME_EXECUTABLE_PATH = String(process.env.CHROME_EXECUTABLE_PATH || '').trim();
 const WA_LAUNCH_TIMEOUT_MS = Math.max(30000, Number(process.env.WA_LAUNCH_TIMEOUT_MS || 120000));
 const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TIMEOUT_MS || 180000));
+const SIGNAL_RAW_CAPTURE = String(process.env.SIGNAL_RAW_CAPTURE || '0').trim() === '1';
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const LOG_DIR = path.join(ROOT_DIR, 'logs');
 const LOG_FILE = path.join(LOG_DIR, 'bot.log');
+const SIGNAL_RAW_LOG_FILE = path.join(LOG_DIR, 'signal_raw.ndjson');
 const HEALTH_FILE = path.join(LOG_DIR, 'health.json');
 const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const FLOWS_FILE = path.join(DATA_DIR, 'flows.json');
 const PANEL_AUTH_FILE = path.join(DATA_DIR, 'panel-auth.json');
-const CHAT_DIRECTORY_FILE = path.join(DATA_DIR, 'chat-directory.json');
 const VERSION_FILE = path.join(ROOT_DIR, 'VERSION');
 
 function readAppVersion() {
@@ -110,26 +113,12 @@ function saveFlowsToDisk(list) {
 }
 
 function loadChatDirectory() {
-  try {
-    if (!fs.existsSync(CHAT_DIRECTORY_FILE)) {
-      return { whatsapp: {}, signal: {} };
-    }
-    const raw = JSON.parse(fs.readFileSync(CHAT_DIRECTORY_FILE, 'utf8'));
-    return {
-      whatsapp: raw?.whatsapp && typeof raw.whatsapp === 'object' ? raw.whatsapp : {},
-      signal: raw?.signal && typeof raw.signal === 'object' ? raw.signal : {}
-    };
-  } catch {
-    return { whatsapp: {}, signal: {} };
-  }
+  return chatDirectoryStore.loadChatDirectory();
 }
 
 function saveChatDirectory(dir) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(CHAT_DIRECTORY_FILE, JSON.stringify(dir, null, 2), 'utf8');
+  return chatDirectoryStore.saveChatDirectory(dir);
 }
-
-const chatDirectory = loadChatDirectory();
 
 function looksTechnicalChatName(id, name) {
   const chatId = String(id || '').trim();
@@ -143,30 +132,43 @@ function looksTechnicalChatName(id, name) {
 
 function upsertChatDirectory(platform, chats) {
   if (!['whatsapp', 'signal'].includes(String(platform || ''))) return;
-  const p = String(platform);
-  let changed = false;
   for (const c of Array.isArray(chats) ? chats : []) {
     const id = String(c?.id || '').trim();
     const name = String(c?.name || '').trim();
-    if (!id || !name) continue;
-    const prev = String(chatDirectory[p][id] || '').trim();
-    const prevTechnical = looksTechnicalChatName(id, prev);
-    const nextTechnical = looksTechnicalChatName(id, name);
-    // Never overwrite a human-readable name with technical id-like text.
-    const nextValue = prev && !prevTechnical && nextTechnical ? prev : name;
-    if (chatDirectory[p][id] !== nextValue) {
-      chatDirectory[p][id] = nextValue;
-      changed = true;
+    if (!id) continue;
+    const found = chatDirectoryStore.findChatByMessage({
+      platform,
+      chatId: id,
+      chatCandidates: [id]
+    });
+    const existingName = String(found?.displayName || '').trim();
+    const existingManual = String(found?.manualLabel || '').trim();
+    const nextName =
+      name && (!existingName || !looksTechnicalChatName(id, name) || looksTechnicalChatName(id, existingName))
+        ? name
+        : existingName;
+    const res = chatDirectoryStore.upsertChatFromMessage({
+      platform,
+      chatId: id,
+      chatName: nextName || existingManual || existingName || name,
+      text: ''
+    });
+    if (res?.entry?.chatKey) {
+      chatDirectoryStore.addAliasesToChat(res.entry.chatKey, [id]);
     }
   }
-  if (changed) saveChatDirectory(chatDirectory);
 }
 
 function resolveChatName(platform, id) {
   const p = String(platform || '').trim();
   const chatId = String(id || '').trim();
   if (!chatId || !['whatsapp', 'signal'].includes(p)) return '';
-  return String(chatDirectory[p]?.[chatId] || '').trim();
+  const found = chatDirectoryStore.findChatByMessage({
+    platform: p,
+    chatId,
+    chatCandidates: [chatId]
+  });
+  return String(found?.manualLabel || found?.displayName || '').trim();
 }
 
 function pickPreferredChatName(platform, id, currentName) {
@@ -211,6 +213,70 @@ function getFlowSignalSourceAliases(flow) {
     for (const a of signalIdCandidates(sid)) aliases.add(a);
   }
   return aliases;
+}
+
+function flowMatchesMessage(flow, message) {
+  const messageCandidates = new Set(buildChatCandidates(message));
+  const flowSourceChatKey = String(flow?.sourceChatKey || '').trim();
+  const flowAliases = new Set(buildFlowAliases(flow));
+  const flowName = flow?.name || flow?.id || 'unnamed-flow';
+
+  if (flowSourceChatKey) {
+    const sourceChat = chatDirectoryStore.getChatByKey(flowSourceChatKey);
+    const sourceAliases = new Set(Array.isArray(sourceChat?.aliases) ? sourceChat.aliases : []);
+    for (const alias of sourceAliases) {
+      if (messageCandidates.has(alias)) {
+        console.log('[ROUTING] flow matched by sourceChatKey', {
+          flowName,
+          sourceChatKey: flowSourceChatKey,
+          matchedBy: alias
+        });
+        return {
+          matched: true,
+          matchedBy: alias
+        };
+      }
+    }
+    return {
+      matched: false,
+      matchedBy: null
+    };
+  }
+
+  if (flowAliases.size === 0) {
+    console.warn('[ROUTING] flow has no aliases', {
+      flowName
+    });
+    return {
+      matched: false,
+      matchedBy: null
+    };
+  }
+
+  for (const alias of flowAliases) {
+    if (messageCandidates.has(alias)) {
+      console.log('[ROUTING] matched source chat', {
+        flowName,
+        matchedBy: alias,
+        flowAliases: Array.from(flowAliases),
+        messageCandidates: Array.from(messageCandidates)
+      });
+      return {
+        matched: true,
+        matchedBy: alias
+      };
+    }
+  }
+
+  console.log('[ROUTING] source chat mismatch', {
+    flowName,
+    flowAliases: Array.from(flowAliases),
+    messageCandidates: Array.from(messageCandidates)
+  });
+  return {
+    matched: false,
+    matchedBy: null
+  };
 }
 
 function noteSignalIncomingChat(chatId, rawText = '') {
@@ -294,7 +360,16 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
   state.signal.autoRemapInFlight = true;
   state.signal.lastAutoRemapAtTs = now;
   try {
-    const signalDict = chatDirectory.signal || {};
+    const signalEntries = chatDirectoryStore.listRecentChats('signal');
+    const signalDict = {};
+    for (const entry of signalEntries) {
+      const label = String(entry?.manualLabel || entry?.displayName || '').trim();
+      if (!label) continue;
+      for (const alias of Array.isArray(entry?.aliases) ? entry.aliases : []) {
+        const key = normalizeChatId(alias);
+        if (key && !signalDict[key]) signalDict[key] = label;
+      }
+    }
     const idsByHumanName = new Map();
     for (const [id, nameRaw] of Object.entries(signalDict)) {
       const idNorm = String(id || '').trim();
@@ -352,15 +427,11 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
   }
 }
 
-function findSignalFlowByIncomingCandidates(incomingCandidates) {
+function findSignalFlowByIncomingCandidates(message) {
   return flows.find((f) => {
     const p = inferPlatforms(f);
     if (p.sourcePlatform !== 'signal') return false;
-    const aliases = getFlowSignalSourceAliases(f);
-    for (const c of incomingCandidates) {
-      if (aliases.has(c)) return true;
-    }
-    return false;
+    return flowMatchesMessage(f, message).matched;
   });
 }
 
@@ -545,6 +616,7 @@ function loadAndMigrateFlows() {
 function normalizeAutomation(body, existingId) {
   const ex = existingId ? flows.find((x) => x.id === existingId) : null;
   const name = String(body.name || '').trim();
+  let sourceChatKey = String(body.sourceChatKey || ex?.sourceChatKey || '').trim();
   let sourceChatIds = [];
   if (Array.isArray(body.sourceChatIds)) {
     sourceChatIds = body.sourceChatIds.map((x) => String(x).trim()).filter(Boolean);
@@ -602,6 +674,7 @@ function normalizeAutomation(body, existingId) {
   }
   if (!['whatsapp', 'signal'].includes(sourcePlatform)) sourcePlatform = 'whatsapp';
   if (!['whatsapp', 'signal', 'fastapi'].includes(targetPlatform)) targetPlatform = 'fastapi';
+  if (sourcePlatform !== 'signal') sourceChatKey = '';
   const direction = sourcePlatform === 'whatsapp' && targetPlatform === 'whatsapp'
     ? 'wa_wa'
     : sourcePlatform === 'whatsapp' && targetPlatform === 'fastapi'
@@ -630,6 +703,25 @@ function normalizeAutomation(body, existingId) {
     }
   }
   const refsById = new Map(sourceChatRefs.map((r) => [r.id, { name: r.name || r.id, aliases: r.aliases || [] }]));
+  if (sourcePlatform === 'signal' && sourceChatKey) {
+    const sourceEntry = chatDirectoryStore.getChatByKey(sourceChatKey);
+    if (sourceEntry) {
+      const aliases = Array.isArray(sourceEntry.aliases) ? sourceEntry.aliases.map((x) => String(x || '').trim()).filter(Boolean) : [];
+      const primary = aliases[0] || '';
+      if (primary) {
+        sourceChatIds = [primary];
+      }
+      sourceChatRefs = primary
+        ? [
+            {
+              id: primary,
+              name: String(sourceEntry.manualLabel || sourceEntry.displayName || primary).trim(),
+              aliases: sourcePlatform === 'signal' ? buildSignalAliasList(primary, aliases) : []
+            }
+          ]
+        : [];
+    }
+  }
   sourceChatRefs = sourceChatIds.map((id) => ({
     id,
     name: pickPreferredChatName(sourcePlatform, id, refsById.get(id)?.name || '') || id,
@@ -652,6 +744,7 @@ function normalizeAutomation(body, existingId) {
     direction,
     sourcePlatform,
     targetPlatform,
+    sourceChatKey: sourceChatKey || null,
     sourceChatIds,
     sourceChatRefs,
     sourceChatId: sourceChatIds[0] || null,
@@ -679,7 +772,8 @@ function normalizeAutomation(body, existingId) {
 
 function validateAutomation(f, allFlows, excludeId) {
   if (!f.name) return 'Вкажіть назву автоматизації';
-  if (!f.sourceChatIds || f.sourceChatIds.length === 0) {
+  const hasSourceKey = String(f.sourceChatKey || '').trim().length > 0;
+  if ((!f.sourceChatIds || f.sourceChatIds.length === 0) && !hasSourceKey) {
     return 'Оберіть хоча б один чат-джерело';
   }
   const p = inferPlatforms(f);
@@ -1081,6 +1175,14 @@ function pushLogThrottled(key, minIntervalMs, level, message, meta = null) {
   pushLog(level, message, meta);
 }
 
+function isIgnorableWaPuppeteerProtocolError(errLike) {
+  const msg = String(errLike?.message || errLike || '');
+  return (
+    msg.includes('Protocol error (Network.getResponseBody): No data found for resource with given identifier') ||
+    msg.includes('No data found for resource with given identifier')
+  );
+}
+
 function noteIgnored(reason) {
   state.counters.ignored += 1;
   const key = String(reason || 'unknown');
@@ -1180,6 +1282,9 @@ function setStatus(status, patch = {}) {
   broadcastEvent('state', getPublicState());
 }
 
+// ----------------------------
+// Signal Transport Layer
+// ----------------------------
 async function signalApiRequest(
   method,
   endpoint,
@@ -1201,6 +1306,21 @@ async function signalApiRequest(
   return res.data;
 }
 
+async function signalHealthCheck(timeoutMs = 6000) {
+  return signalApiRequest('get', '/health', undefined, undefined, timeoutMs);
+}
+
+async function signalLinkedCheck(timeoutMs = 70000) {
+  const base = SIGNAL_API_URL.replace(/\/+$/, '');
+  const rawRes = await axios.get(`${base}/linked`, { timeout: Math.max(1000, Number(timeoutMs) || 70000) });
+  const raw = rawRes.data;
+  const accounts = Array.isArray(raw?.accounts)
+    ? raw.accounts.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  const linked = Boolean(raw?.linked);
+  return { linked, accounts };
+}
+
 function normalizeSignalChatList(raw) {
   const arr = Array.isArray(raw)
     ? raw
@@ -1218,37 +1338,155 @@ function normalizeSignalChatList(raw) {
     .filter(Boolean);
 }
 
-function normalizeSignalMessages(raw) {
-  const arr = Array.isArray(raw)
+function extractSignalRawMessages(raw) {
+  return Array.isArray(raw)
     ? raw
     : Array.isArray(raw?.messages)
       ? raw.messages
       : Array.isArray(raw?.data)
         ? raw.data
         : [];
-  return arr
-    .map((m) => {
-      const id = String(m.id || m.messageId || m.uuid || '').trim();
-      const chatId = String(m.chatId || m.source || m.groupId || '').trim();
-      const rawCandidates = Array.isArray(m.chatCandidates) ? m.chatCandidates : [];
-      const chatCandidates = rawCandidates
-        .map((x) => String(x || '').trim())
-        .filter(Boolean);
-      if (chatId && !chatCandidates.includes(chatId)) chatCandidates.unshift(chatId);
-      const text = String(m.text || m.message || m.body || '').trim();
-      const author = m.author || m.sender || null;
-      const tsRaw = Number(m.timestamp || m.ts || Date.now());
-      if (!chatId) return null;
-      return {
-        id: id || `signal_${chatId}_${tsRaw}_${Math.random().toString(36).slice(2, 8)}`,
-        chatId,
-        chatCandidates,
-        text,
-        author,
-        timestamp: Number.isFinite(tsRaw) ? tsRaw : Date.now()
-      };
-    })
-    .filter(Boolean);
+}
+
+function buildSignalFallbackMessageId(event) {
+  const chatId = String(event?.chatId || '').trim();
+  const ts = String(event?.sentAt || event?.timestamp || '').trim();
+  const text = String(event?.text || '').trim();
+  const basis = `${chatId}|${ts}|${text}`;
+  return `signal_${crypto.createHash('sha1').update(basis).digest('hex').slice(0, 20)}`;
+}
+
+function captureSignalRawEvent(rawEvent) {
+  if (!SIGNAL_RAW_CAPTURE) return;
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const normalized = normalizeSignalMessage(rawEvent);
+    const row = {
+      platform: 'signal',
+      chatId: normalized?.chatId || null,
+      chatCandidates: Array.isArray(normalized?.chatCandidates) ? normalized.chatCandidates : [],
+      chatName: normalized?.chatName ?? null,
+      senderId: normalized?.senderId ?? null,
+      senderName: normalized?.senderName ?? null,
+      messageId: normalized?.messageId || null,
+      text: String(normalized?.text || ''),
+      sentAt: normalized?.sentAt ?? null,
+      attachments: Array.isArray(normalized?.attachments) ? normalized.attachments : [],
+      isTextMessage: Boolean(normalized?.isTextMessage),
+      isEmptyMessage: Boolean(normalized?.isEmptyMessage),
+      raw: normalized?.raw || rawEvent || {}
+    };
+    const line = JSON.stringify(row) + '\n';
+    fs.appendFile(SIGNAL_RAW_LOG_FILE, line, 'utf8', (err) => {
+      if (!err) return;
+      pushLogThrottled(
+        'signal_raw_capture_write_failed',
+        60000,
+        'WARN',
+        'Signal raw capture write failed',
+        { message: err.message || String(err), file: SIGNAL_RAW_LOG_FILE }
+      );
+    });
+  } catch (error) {
+    // Diagnostic capture must never break routing path.
+    pushLogThrottled(
+      'signal_raw_capture_exception',
+      60000,
+      'WARN',
+      'Signal raw capture exception',
+      { message: error?.message || String(error), file: SIGNAL_RAW_LOG_FILE }
+    );
+  }
+}
+
+// ----------------------------
+// Signal Normalization Layer
+// ----------------------------
+function normalizeSignalMessage(raw) {
+  const m = raw || {};
+  const chatId = String(
+    m.chatId || m.groupId || m.source || m.envelope?.groupInfo?.groupId || m.envelope?.source || ''
+  ).trim();
+
+  const chatCandidatesSet = new Set();
+  const addCandidate = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    chatCandidatesSet.add(s);
+  };
+  const addNormalizedCandidate = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    const low = s.toLowerCase();
+    if (low.startsWith('group.')) {
+      const stripped = low.slice(6).trim();
+      if (stripped) chatCandidatesSet.add(stripped);
+    } else {
+      chatCandidatesSet.add(low);
+    }
+  };
+  const rawCandidates = Array.isArray(m.chatCandidates) ? m.chatCandidates : [];
+  for (const rc of rawCandidates) {
+    addCandidate(rc);
+    addNormalizedCandidate(rc);
+  }
+  addCandidate(chatId);
+  addNormalizedCandidate(chatId);
+  const chatCandidates = Array.from(chatCandidatesSet);
+
+  const senderId = String(m.sender || m.author || m.source || m.envelope?.source || '').trim() || null;
+  const text = String(m.message || m.text || m.body || m.envelope?.dataMessage?.message || '');
+  const tsRaw = Number(m.timestamp || m.ts || m.envelope?.timestamp);
+  const sentAt = Number.isFinite(tsRaw) ? tsRaw : null;
+  const attachmentsRaw =
+    (Array.isArray(m.attachments) && m.attachments) ||
+    (Array.isArray(m.envelope?.dataMessage?.attachments) && m.envelope.dataMessage.attachments) ||
+    [];
+  const attachments = Array.isArray(attachmentsRaw) ? attachmentsRaw : [];
+
+  const canonical = {
+    platform: 'signal',
+    chatId: chatId || null,
+    chatCandidates: Array.isArray(chatCandidates) ? chatCandidates : [],
+    chatName: null,
+    senderId,
+    senderName: null,
+    messageId: String(m.id || m.messageId || m.uuid || '').trim() || null,
+    text,
+    sentAt,
+    attachments: Array.isArray(attachments) ? attachments : [],
+    isTextMessage: text.trim().length > 0,
+    isEmptyMessage: text.trim().length === 0,
+    raw: m
+  };
+  if (!canonical.messageId) {
+    canonical.messageId = buildSignalFallbackMessageId({
+      chatId: canonical.chatId || '',
+      sentAt: canonical.sentAt || '',
+      text: canonical.text || ''
+    });
+  }
+
+  // Backward-compatible aliases for current routing path.
+  canonical.id = canonical.messageId;
+  canonical.author = canonical.senderId;
+  canonical.timestamp = canonical.sentAt || Date.now();
+  return canonical;
+}
+
+function normalizeSignalMessages(raw) {
+  const arr = extractSignalRawMessages(raw);
+  const normalized = arr.map((m) => normalizeSignalMessage(m)).filter((x) => x && x.chatId);
+  for (const message of normalized) {
+    message.chatCandidates = buildChatCandidates(message);
+    console.log('[DEBUG] candidates:', buildChatCandidates(message));
+    console.log('[DEBUG] routing identity:', {
+      chatId: message.chatId,
+      senderId: message.senderId,
+      candidates: buildChatCandidates(message)
+    });
+  }
+  return normalized;
 }
 
 function signalIdCandidates(value) {
@@ -1275,17 +1513,58 @@ async function fetchSignalChats() {
   return list;
 }
 
+// ----------------------------
+// Signal Event Intake Layer
+// ----------------------------
+async function fetchSignalMessages(sinceTs = 0) {
+  const raw = await signalApiRequest(
+    'get',
+    '/messages',
+    undefined,
+    { since: sinceTs || undefined },
+    90000
+  );
+  const rawEvents = extractSignalRawMessages(raw);
+  if (SIGNAL_RAW_CAPTURE) {
+    pushLogThrottled(
+      'signal_raw_capture_active',
+      15000,
+      'INFO',
+      'Signal raw capture active',
+      { events: rawEvents.length, file: SIGNAL_RAW_LOG_FILE }
+    );
+  }
+  for (const e of rawEvents) {
+    captureSignalRawEvent(e);
+  }
+  const normalized = normalizeSignalMessages(raw);
+  if (normalized.length > 0) {
+    const samples = normalized.slice(0, 3).map((m) => ({
+      platform: m.platform,
+      chatId: m.chatId,
+      chatCandidates: m.chatCandidates,
+      senderId: m.senderId,
+      messageId: m.messageId,
+      text: String(m.text || '').slice(0, 80),
+      isTextMessage: m.isTextMessage,
+      isEmptyMessage: m.isEmptyMessage
+    }));
+    pushLogThrottled(
+      'signal_normalized_samples',
+      15000,
+      'INFO',
+      'Signal normalized samples',
+      { count: normalized.length, samples }
+    );
+  }
+  return normalized;
+}
+
 async function checkSignalLinkedStatus() {
   if (!SIGNAL_API_URL) return null;
   if (signalLinkInProgress) return null;
   try {
-    const base = SIGNAL_API_URL.replace(/\/+$/, '');
-    const rawRes = await axios.get(`${base}/linked`, { timeout: 70000 });
-    const raw = rawRes.data;
-    const accounts = Array.isArray(raw?.accounts)
-      ? raw.accounts.map((x) => String(x || '').trim()).filter(Boolean)
-      : [];
-    const linked = Boolean(raw?.linked);
+    const { linked, accounts } = await signalLinkedCheck(70000);
     state.signal.linked = linked;
     state.signal.linkedAccounts = accounts;
     state.signal.lastLinkedCheckAt = nowIso();
@@ -1331,7 +1610,7 @@ async function requestSignalLinkQr(deviceName, options = {}) {
   pushLog('INFO', reqLabel, { deviceName: name });
   if (SIGNAL_API_URL) {
     try {
-      await signalApiRequest('get', '/health', undefined, undefined, 6000);
+      await signalHealthCheck(6000);
     } catch (healthErr) {
       state.signal.lastLinkErrorAt = nowIso();
       state.signal.lastLinkError = healthErr.message || 'Signal bridge health check failed';
@@ -1411,6 +1690,40 @@ function writeHealth() {
     'utf8'
   );
 }
+
+process.on('uncaughtException', (error) => {
+  if (isIgnorableWaPuppeteerProtocolError(error)) {
+    pushLogThrottled(
+      'wa_puppeteer_protocol_ignorable_uncaught',
+      60000,
+      'WARN',
+      'Ignored non-fatal WA Puppeteer protocol error',
+      { message: error?.message || String(error) }
+    );
+    return;
+  }
+  pushLog('ERROR', 'Uncaught exception', {
+    message: error?.message || String(error),
+    stack: error?.stack || null
+  });
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (isIgnorableWaPuppeteerProtocolError(reason)) {
+    pushLogThrottled(
+      'wa_puppeteer_protocol_ignorable_rejection',
+      60000,
+      'WARN',
+      'Ignored non-fatal WA Puppeteer rejection',
+      { message: reason?.message || String(reason) }
+    );
+    return;
+  }
+  pushLog('ERROR', 'Unhandled promise rejection', {
+    message: reason?.message || String(reason),
+    stack: reason?.stack || null
+  });
+});
 
 function broadcastEvent(type, payload) {
   const data = `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -1550,9 +1863,29 @@ async function processSignalIncomingMessage(message) {
   );
   for (const x of signalIdCandidates(chatId)) incomingCandidates.add(x);
   const rawText = String(message.text || '').trim();
+  const chatUpsert = chatDirectoryStore.upsertChatFromMessage({
+    ...message,
+    platform: 'signal',
+    chatId,
+    text: rawText
+  });
+  if (chatUpsert?.created && chatUpsert?.entry?.chatKey) {
+    pushLog('INFO', 'Chat directory entry created', {
+      platform: 'signal',
+      chatKey: chatUpsert.entry.chatKey,
+      aliases: chatUpsert.entry.aliases || [],
+      displayName: chatUpsert.entry.manualLabel || chatUpsert.entry.displayName || ''
+    });
+  } else if (Array.isArray(chatUpsert?.mergedAliases) && chatUpsert.mergedAliases.length > 0) {
+    pushLog('INFO', 'Chat directory aliases merged', {
+      platform: 'signal',
+      chatKey: chatUpsert?.entry?.chatKey || null,
+      mergedAliases: chatUpsert.mergedAliases
+    });
+  }
   noteSignalIncomingChat(chatId, rawText);
   const isTestProbe = /\btest\b/i.test(rawText);
-  let flow = findSignalFlowByIncomingCandidates(incomingCandidates);
+  let flow = findSignalFlowByIncomingCandidates(message);
   if (isTestProbe) {
     pushLogThrottled(
       `signal_test_probe_pre_${chatId}`,
@@ -1569,7 +1902,7 @@ async function processSignalIncomingMessage(message) {
   }
   if (!flow && AUTO_SIGNAL_SOURCE_AUTOREMAP) {
     autoRemapSignalFlowsFromDirectory(false);
-    flow = findSignalFlowByIncomingCandidates(incomingCandidates);
+    flow = findSignalFlowByIncomingCandidates(message);
     if (isTestProbe) {
       pushLogThrottled(
         `signal_test_probe_post_${chatId}`,
@@ -1700,14 +2033,7 @@ async function pollSignalMessages() {
     return;
   }
   try {
-    const raw = await signalApiRequest(
-      'get',
-      '/messages',
-      undefined,
-      { since: signalLastPollTs || undefined },
-      90000
-    );
-    const msgs = normalizeSignalMessages(raw);
+    const msgs = await fetchSignalMessages(signalLastPollTs || 0);
     if (msgs.length > 0) {
       pushLogThrottled(
         'signal_messages_fetched',
@@ -1864,12 +2190,41 @@ function attachClientEvents(instance) {
 
       const chatId = getChatId(msg);
       const rawText = String(msg.body || '').trim();
+      const waUpsert = chatDirectoryStore.upsertChatFromMessage({
+        platform: 'whatsapp',
+        chatId,
+        chatCandidates: [chatId],
+        chatName: null,
+        senderId: msg.author || msg.from || null,
+        senderName: null,
+        text: rawText
+      });
+      if (waUpsert?.created && waUpsert?.entry?.chatKey) {
+        pushLog('INFO', 'Chat directory entry created', {
+          platform: 'whatsapp',
+          chatKey: waUpsert.entry.chatKey,
+          aliases: waUpsert.entry.aliases || []
+        });
+      } else if (Array.isArray(waUpsert?.mergedAliases) && waUpsert.mergedAliases.length > 0) {
+        pushLog('INFO', 'Chat directory aliases merged', {
+          platform: 'whatsapp',
+          chatKey: waUpsert?.entry?.chatKey || null,
+          mergedAliases: waUpsert.mergedAliases
+        });
+      }
 
       let flow = null;
       if (flows.length > 0) {
+        const routeMessage = {
+          platform: 'whatsapp',
+          chatId,
+          chatCandidates: [chatId],
+          senderId: msg.author || msg.from || null
+        };
         flow = flows.find((f) => {
           const p = inferPlatforms(f);
-          return p.sourcePlatform === 'whatsapp' && getSourceIds(f).includes(chatId);
+          if (p.sourcePlatform !== 'whatsapp') return false;
+          return flowMatchesMessage(f, routeMessage).matched;
         });
         if (!flow) return;
       } else {
@@ -2383,6 +2738,32 @@ app.get('/api/chats', async (req, res) => {
   }
 });
 
+app.get('/api/chat-directory/recent', (req, res) => {
+  const platform = String(req.query.platform || '').trim();
+  const includeAliases = String(req.query.debug || '0').trim() === '1';
+  const allowed = ['whatsapp', 'signal'];
+  if (platform && !allowed.includes(platform)) {
+    return res.status(400).json({ ok: false, message: 'Unsupported platform' });
+  }
+  const list = chatDirectoryStore.listRecentChats(platform || '');
+  const chats = list.map((entry) => {
+    const safe = {
+      chatKey: String(entry.chatKey || '').trim(),
+      platform: String(entry.platform || '').trim(),
+      chatType: entry.chatType === 'direct' ? 'direct' : 'group',
+      displayName: String(entry.displayName || '').trim(),
+      manualLabel: String(entry.manualLabel || '').trim(),
+      lastSeenAt: entry.lastSeenAt || null,
+      lastMessagePreview: String(entry.lastMessagePreview || '').trim()
+    };
+    if (includeAliases) {
+      safe.aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+    }
+    return safe;
+  });
+  return res.json({ ok: true, chats });
+});
+
 app.get('/api/flows', (req, res) => {
   res.json({ ok: true, flows });
 });
@@ -2590,6 +2971,10 @@ app.listen(PORT, () => {
   }
   pushLog('INFO', 'Browser auto-open disabled in server');
   pushLog('INFO', `WA Bridge ${APP_VERSION}`);
+  pushLog('INFO', 'Signal raw capture mode', {
+    enabled: SIGNAL_RAW_CAPTURE,
+    file: SIGNAL_RAW_LOG_FILE
+  });
   setTimeout(() => {
     startupAutoInit().catch((e) => {
       pushLog('ERROR', 'Startup auto-init failed', { message: e.message || String(e) });

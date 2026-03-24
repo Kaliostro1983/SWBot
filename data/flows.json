@@ -14,9 +14,17 @@
         "name": "Автоматизація",
         "aliases": [
           "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
-          "a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0="
+          "a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
+          "711d4b90-4c17-407c-9f61-ae40bf24348f",
+          "group.711d4b90-4c17-407c-9f61-ae40bf24348f",
+          "signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f",
+          "group.signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f"
         ]
       }
+    ],
+    "aliases": [
+      "711d4b90-4c17-407c-9f61-ae40bf24348f",
+      "signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f"
     ],
     "sourceChatId": "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
     "fastapiUrl": null,
