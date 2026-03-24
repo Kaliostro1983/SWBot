@@ -1,44 +1,36 @@
 [
   {
     "id": "flow_1774195501688_xuum20rr",
-    "name": "Кипарис ТЕСТ та ЧАСТОТИ РЕР",
-    "direction": "wa_wa",
+    "name": "Signal -> WhatsApp",
+    "direction": "signal_whatsapp",
+    "sourcePlatform": "signal",
+    "targetPlatform": "whatsapp",
     "sourceChatIds": [
-      "120363424391416042@g.us",
-      "120363305736761346@g.us"
+      "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0="
     ],
-    "sourceChatId": "120363424391416042@g.us",
+    "sourceChatRefs": [
+      {
+        "id": "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
+        "name": "Автоматизація",
+        "aliases": [
+          "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
+          "a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0="
+        ]
+      }
+    ],
+    "sourceChatId": "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
     "fastapiUrl": null,
-    "targetChatId": "120363425828018712@g.us",
+    "targetChatId": "120363407577191397@g.us",
+    "targetChatRef": {
+      "id": "120363407577191397@g.us",
+      "name": "Чат-2222222222"
+    },
     "paused": false,
-    "keywords": "*",
-    "frequencies": "",
-    "sendAttachments": true,
-    "coordinatesScreenshot": false,
-    "analysisPlugin": null,
-    "outdatedDiff": null,
-    "sourcePlatform": "whatsapp",
-    "targetPlatform": "whatsapp"
-  },
-  {
-    "id": "flow_1774201805108_mo8gc9zp",
-    "name": "Кипарис ТЕСТ та ЧАСТОТИ РЕР (копія)",
-    "direction": "wa_fastapi",
-    "sourceChatIds": [
-      "120363424391416042@g.us",
-      "120363305736761346@g.us"
-    ],
-    "sourceChatId": "120363424391416042@g.us",
-    "fastapiUrl": null,
-    "targetChatId": null,
-    "paused": true,
     "keywords": "*",
     "frequencies": "",
     "sendAttachments": false,
     "coordinatesScreenshot": false,
     "analysisPlugin": null,
-    "outdatedDiff": null,
-    "sourcePlatform": "whatsapp",
-    "targetPlatform": "fastapi"
+    "outdatedDiff": null
   }
 ]

@@ -23,6 +23,22 @@ const SOURCE_FILTER_KEYWORDS = String(process.env.SOURCE_FILTER_KEYWORDS || '').
 const SOURCE_FILTER_FREQUENCIES = String(process.env.SOURCE_FILTER_FREQUENCIES || '').trim();
 const SIGNAL_API_URL = String(process.env.SIGNAL_API_URL || '').trim();
 const SIGNAL_POLL_MS = Number(process.env.SIGNAL_POLL_MS || 5000);
+const SIGNAL_LINK_TIMEOUT_MS = Math.max(30000, Number(process.env.SIGNAL_LINK_TIMEOUT_MS || 120000));
+const SIGNAL_LINK_ALLOW_DOCKER_FALLBACK = String(
+  process.env.SIGNAL_LINK_ALLOW_DOCKER_FALLBACK || '0'
+).trim() === '1';
+const AUTO_START_BOT_ON_SERVICE_START = String(
+  process.env.AUTO_START_BOT_ON_SERVICE_START || '1'
+).trim() !== '0';
+const AUTO_SIGNAL_RELINK_ON_SERVICE_START = String(
+  process.env.AUTO_SIGNAL_RELINK_ON_SERVICE_START || '0'
+).trim() !== '0';
+const AUTO_SIGNAL_SOURCE_AUTOREMAP = String(
+  process.env.AUTO_SIGNAL_SOURCE_AUTOREMAP || '0'
+).trim() === '1';
+const CHROME_EXECUTABLE_PATH = String(process.env.CHROME_EXECUTABLE_PATH || '').trim();
+const WA_LAUNCH_TIMEOUT_MS = Math.max(30000, Number(process.env.WA_LAUNCH_TIMEOUT_MS || 120000));
+const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TIMEOUT_MS || 180000));
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -33,6 +49,8 @@ const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const FLOWS_FILE = path.join(DATA_DIR, 'flows.json');
+const PANEL_AUTH_FILE = path.join(DATA_DIR, 'panel-auth.json');
+const CHAT_DIRECTORY_FILE = path.join(DATA_DIR, 'chat-directory.json');
 const VERSION_FILE = path.join(ROOT_DIR, 'VERSION');
 
 function readAppVersion() {
@@ -54,6 +72,27 @@ function readAppVersion() {
 
 const APP_VERSION = readAppVersion();
 
+function resolveChromeExecutablePath() {
+  if (CHROME_EXECUTABLE_PATH && fs.existsSync(CHROME_EXECUTABLE_PATH)) {
+    return CHROME_EXECUTABLE_PATH;
+  }
+  if (process.platform !== 'win32') return null;
+  const local = process.env.LOCALAPPDATA || '';
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const candidates = [
+    path.join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    path.join(programFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    path.join(programFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+  ];
+  for (const p of candidates) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 function loadFlowsFromDisk() {
   try {
     if (!fs.existsSync(FLOWS_FILE)) return [];
@@ -68,6 +107,261 @@ function loadFlowsFromDisk() {
 function saveFlowsToDisk(list) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(FLOWS_FILE, JSON.stringify(list, null, 2), 'utf8');
+}
+
+function loadChatDirectory() {
+  try {
+    if (!fs.existsSync(CHAT_DIRECTORY_FILE)) {
+      return { whatsapp: {}, signal: {} };
+    }
+    const raw = JSON.parse(fs.readFileSync(CHAT_DIRECTORY_FILE, 'utf8'));
+    return {
+      whatsapp: raw?.whatsapp && typeof raw.whatsapp === 'object' ? raw.whatsapp : {},
+      signal: raw?.signal && typeof raw.signal === 'object' ? raw.signal : {}
+    };
+  } catch {
+    return { whatsapp: {}, signal: {} };
+  }
+}
+
+function saveChatDirectory(dir) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(CHAT_DIRECTORY_FILE, JSON.stringify(dir, null, 2), 'utf8');
+}
+
+const chatDirectory = loadChatDirectory();
+
+function looksTechnicalChatName(id, name) {
+  const chatId = String(id || '').trim();
+  const label = String(name || '').trim();
+  if (!label) return true;
+  if (label === chatId) return true;
+  if (label.startsWith('group.')) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(label)) return true;
+  return false;
+}
+
+function upsertChatDirectory(platform, chats) {
+  if (!['whatsapp', 'signal'].includes(String(platform || ''))) return;
+  const p = String(platform);
+  let changed = false;
+  for (const c of Array.isArray(chats) ? chats : []) {
+    const id = String(c?.id || '').trim();
+    const name = String(c?.name || '').trim();
+    if (!id || !name) continue;
+    const prev = String(chatDirectory[p][id] || '').trim();
+    const prevTechnical = looksTechnicalChatName(id, prev);
+    const nextTechnical = looksTechnicalChatName(id, name);
+    // Never overwrite a human-readable name with technical id-like text.
+    const nextValue = prev && !prevTechnical && nextTechnical ? prev : name;
+    if (chatDirectory[p][id] !== nextValue) {
+      chatDirectory[p][id] = nextValue;
+      changed = true;
+    }
+  }
+  if (changed) saveChatDirectory(chatDirectory);
+}
+
+function resolveChatName(platform, id) {
+  const p = String(platform || '').trim();
+  const chatId = String(id || '').trim();
+  if (!chatId || !['whatsapp', 'signal'].includes(p)) return '';
+  return String(chatDirectory[p]?.[chatId] || '').trim();
+}
+
+function pickPreferredChatName(platform, id, currentName) {
+  const known = resolveChatName(platform, id);
+  if (known && !looksTechnicalChatName(id, known)) return known;
+  const n = String(currentName || '').trim();
+  if (n && !looksTechnicalChatName(id, n)) return n;
+  return '';
+}
+
+function normalizeAliases(rawAliases) {
+  const out = [];
+  for (const a of Array.isArray(rawAliases) ? rawAliases : []) {
+    const s = String(a || '').trim();
+    if (!s) continue;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+function buildSignalAliasList(id, rawAliases = []) {
+  const out = [];
+  const add = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    if (!out.includes(s)) out.push(s);
+  };
+  for (const c of signalIdCandidates(id)) add(c);
+  for (const a of normalizeAliases(rawAliases)) {
+    for (const c of signalIdCandidates(a)) add(c);
+  }
+  return out;
+}
+
+function getFlowSignalSourceAliases(flow) {
+  const aliases = new Set();
+  const refs = Array.isArray(flow?.sourceChatRefs) ? flow.sourceChatRefs : [];
+  for (const r of refs) {
+    for (const a of buildSignalAliasList(r?.id, r?.aliases || [])) aliases.add(a);
+  }
+  for (const sid of getSourceIds(flow)) {
+    for (const a of signalIdCandidates(sid)) aliases.add(a);
+  }
+  return aliases;
+}
+
+function noteSignalIncomingChat(chatId, rawText = '') {
+  const id = String(chatId || '').trim();
+  if (!id) return;
+  const cur = Array.isArray(state.signal.recentIncomingChats) ? state.signal.recentIncomingChats : [];
+  const prev = cur.find((x) => String(x?.id || '') === id);
+  const name = resolveChatName('signal', id) || prev?.name || id;
+  const item = {
+    id,
+    name,
+    lastAt: nowIso(),
+    hits: Number(prev?.hits || 0) + 1,
+    preview: String(rawText || '').trim().slice(0, 80)
+  };
+  const next = [item, ...cur.filter((x) => String(x?.id || '') !== id)]
+    .sort((a, b) => {
+      const ta = Date.parse(String(a?.lastAt || '')) || 0;
+      const tb = Date.parse(String(b?.lastAt || '')) || 0;
+      return tb - ta;
+    })
+    .slice(0, 20);
+  state.signal.recentIncomingChats = next;
+}
+
+function enrichFlowRefsFromDirectory() {
+  let changed = false;
+  flows = flows.map((f) => {
+    const p = inferPlatforms(f);
+    const next = { ...f };
+    const srcIds = getSourceIds(next);
+    const refsMap = new Map(
+      Array.isArray(next.sourceChatRefs)
+        ? next.sourceChatRefs
+            .map((r) => [
+              String(r?.id || '').trim(),
+              {
+                name: String(r?.name || '').trim(),
+                aliases: normalizeAliases(r?.aliases)
+              }
+            ])
+            .filter(([id]) => Boolean(id))
+        : []
+    );
+    next.sourceChatRefs = srcIds.map((id) => {
+      const cur = refsMap.get(id) || { name: '', aliases: [] };
+      const current = cur.name || '';
+      const resolved = pickPreferredChatName(p.sourcePlatform, id, current) || id;
+      const aliases = p.sourcePlatform === 'signal' ? buildSignalAliasList(id, cur.aliases) : [];
+      if (resolved !== current) changed = true;
+      if (JSON.stringify(aliases) !== JSON.stringify(cur.aliases || [])) changed = true;
+      return { id, name: resolved, aliases };
+    });
+    if (next.targetChatId) {
+      const currentTargetName = String(next?.targetChatRef?.name || '').trim();
+      const targetName =
+        pickPreferredChatName(p.targetPlatform, next.targetChatId, currentTargetName) ||
+        String(next.targetChatId).trim();
+      if (!next.targetChatRef || next.targetChatRef.id !== next.targetChatId || targetName !== currentTargetName) {
+        next.targetChatRef = { id: String(next.targetChatId).trim(), name: targetName };
+        changed = true;
+      }
+    }
+    return next;
+  });
+  if (changed) {
+    saveFlowsToDisk(flows);
+    writeHealth();
+    broadcastEvent('state', getPublicState());
+  }
+}
+
+function autoRemapSignalFlowsFromDirectory(force = false) {
+  const now = Date.now();
+  const minIntervalMs = 15000;
+  if (!force) {
+    const last = Number(state?.signal?.lastAutoRemapAtTs || 0);
+    if (now - last < minIntervalMs) return false;
+  }
+  if (state?.signal?.autoRemapInFlight) return false;
+  state.signal.autoRemapInFlight = true;
+  state.signal.lastAutoRemapAtTs = now;
+  try {
+    const signalDict = chatDirectory.signal || {};
+    const idsByHumanName = new Map();
+    for (const [id, nameRaw] of Object.entries(signalDict)) {
+      const idNorm = String(id || '').trim();
+      const name = String(nameRaw || '').trim();
+      if (!idNorm || !name || looksTechnicalChatName(idNorm, name)) continue;
+      const arr = idsByHumanName.get(name) || [];
+      arr.push(idNorm);
+      idsByHumanName.set(name, arr);
+    }
+
+    let changed = false;
+    flows = flows.map((f) => {
+      const p = inferPlatforms(f);
+      if (p.sourcePlatform !== 'signal') return f;
+      const next = { ...f };
+      const refs = Array.isArray(next.sourceChatRefs) ? next.sourceChatRefs : [];
+      const remappedIds = [];
+      const remappedRefs = [];
+      for (const r of refs) {
+        const oldId = String(r?.id || '').trim();
+        const label = String(r?.name || '').trim();
+        const candidates = idsByHumanName.get(label) || [];
+        const newId = candidates.length === 1 ? candidates[0] : oldId;
+        if (newId && !remappedIds.includes(newId)) remappedIds.push(newId);
+        const aliases = buildSignalAliasList(newId || oldId, candidates);
+        remappedRefs.push({
+          id: newId || oldId,
+          name: label || pickPreferredChatName('signal', newId || oldId, '') || (newId || oldId),
+          aliases
+        });
+        if (newId && oldId && newId !== oldId) changed = true;
+      }
+      if (remappedIds.length > 0) {
+        next.sourceChatIds = remappedIds;
+        next.sourceChatId = remappedIds[0] || null;
+        next.sourceChatRefs = remappedRefs;
+      }
+      return next;
+    });
+
+    if (changed) {
+      saveFlowsToDisk(flows);
+      writeHealth();
+      broadcastEvent('state', getPublicState());
+      pushLogThrottled(
+        'signal_auto_remap_applied',
+        10000,
+        'INFO',
+        'Signal source chats auto-remapped from directory'
+      );
+    }
+    return changed;
+  } finally {
+    state.signal.autoRemapInFlight = false;
+  }
+}
+
+function findSignalFlowByIncomingCandidates(incomingCandidates) {
+  return flows.find((f) => {
+    const p = inferPlatforms(f);
+    if (p.sourcePlatform !== 'signal') return false;
+    const aliases = getFlowSignalSourceAliases(f);
+    for (const c of incomingCandidates) {
+      if (aliases.has(c)) return true;
+    }
+    return false;
+  });
 }
 
 function generateFlowId() {
@@ -171,6 +465,7 @@ function migrateFlowRecord(f) {
     out.sourcePlatform = p.sourcePlatform;
     out.targetPlatform = p.targetPlatform;
   }
+  const p = inferPlatforms(out);
   if (out.keywords === undefined) out.keywords = '';
   if (out.frequencies === undefined) out.frequencies = '';
   if (out.sendAttachments === undefined) out.sendAttachments = false;
@@ -183,6 +478,50 @@ function migrateFlowRecord(f) {
     splitFilterTokens(String(out.frequencies || '')).length === 0
   ) {
     out.keywords = '*';
+  }
+  if (!Array.isArray(out.sourceChatRefs)) {
+    out.sourceChatRefs = getSourceIds(out).map((id) => ({
+      id,
+      name: pickPreferredChatName(p.sourcePlatform, id, '') || id,
+      aliases: p.sourcePlatform === 'signal' ? buildSignalAliasList(id) : []
+    }));
+  } else {
+    const validIds = new Set(getSourceIds(out));
+    out.sourceChatRefs = out.sourceChatRefs
+      .map((r) => ({
+        id: String(r?.id || '').trim(),
+        name: String(r?.name || '').trim(),
+        aliases: normalizeAliases(r?.aliases)
+      }))
+      .filter((r) => r.id && validIds.has(r.id));
+    if (out.sourceChatRefs.length === 0) {
+      out.sourceChatRefs = getSourceIds(out).map((id) => ({
+        id,
+        name: pickPreferredChatName(p.sourcePlatform, id, '') || id,
+        aliases: p.sourcePlatform === 'signal' ? buildSignalAliasList(id) : []
+      }));
+    } else {
+      out.sourceChatRefs = out.sourceChatRefs.map((r) => ({
+        id: r.id,
+        name: pickPreferredChatName(p.sourcePlatform, r.id, r.name) || r.id,
+        aliases: p.sourcePlatform === 'signal' ? buildSignalAliasList(r.id, r.aliases) : []
+      }));
+    }
+  }
+  if (out.targetChatId) {
+    const preferredTargetName =
+      pickPreferredChatName(p.targetPlatform, String(out.targetChatId).trim(), out.targetChatRef?.name) ||
+      String(out.targetChatId).trim();
+    if (!out.targetChatRef || String(out.targetChatRef.id || '').trim() !== String(out.targetChatId).trim()) {
+      out.targetChatRef = { id: String(out.targetChatId).trim(), name: preferredTargetName };
+    } else {
+      out.targetChatRef = {
+        id: String(out.targetChatRef.id || '').trim(),
+        name: preferredTargetName
+      };
+    }
+  } else {
+    out.targetChatRef = null;
   }
   return out;
 }
@@ -212,6 +551,24 @@ function normalizeAutomation(body, existingId) {
   } else if (body.sourceChatId) {
     const one = String(body.sourceChatId).trim();
     if (one) sourceChatIds = [one];
+  }
+  let sourceChatRefs = [];
+  if (Array.isArray(body.sourceChatRefs)) {
+    sourceChatRefs = body.sourceChatRefs
+      .map((r) => ({
+        id: String(r?.id || '').trim(),
+        name: String(r?.name || '').trim(),
+        aliases: normalizeAliases(r?.aliases)
+      }))
+      .filter((r) => r.id);
+  } else if (ex && Array.isArray(ex.sourceChatRefs)) {
+    sourceChatRefs = ex.sourceChatRefs
+      .map((r) => ({
+        id: String(r?.id || '').trim(),
+        name: String(r?.name || '').trim(),
+        aliases: normalizeAliases(r?.aliases)
+      }))
+      .filter((r) => r.id);
   }
   let paused = false;
   if (body.paused !== undefined) {
@@ -252,6 +609,7 @@ function normalizeAutomation(body, existingId) {
       : `${sourcePlatform}_${targetPlatform}`;
 
   let targetChatId = null;
+  let targetChatRef = null;
   if (targetPlatform === 'whatsapp' || targetPlatform === 'signal') {
     if (body.targetChatId !== undefined && body.targetChatId !== null) {
       const t = String(body.targetChatId).trim();
@@ -259,6 +617,33 @@ function normalizeAutomation(body, existingId) {
     } else if (ex && ex.targetChatId) {
       targetChatId = String(ex.targetChatId).trim() || null;
     }
+    if (body.targetChatRef && body.targetChatRef.id) {
+      targetChatRef = {
+        id: String(body.targetChatRef.id || '').trim(),
+        name: String(body.targetChatRef.name || body.targetChatRef.id || '').trim()
+      };
+    } else if (ex && ex.targetChatRef && ex.targetChatRef.id) {
+      targetChatRef = {
+        id: String(ex.targetChatRef.id || '').trim(),
+        name: String(ex.targetChatRef.name || ex.targetChatRef.id || '').trim()
+      };
+    }
+  }
+  const refsById = new Map(sourceChatRefs.map((r) => [r.id, { name: r.name || r.id, aliases: r.aliases || [] }]));
+  sourceChatRefs = sourceChatIds.map((id) => ({
+    id,
+    name: pickPreferredChatName(sourcePlatform, id, refsById.get(id)?.name || '') || id,
+    aliases: sourcePlatform === 'signal' ? buildSignalAliasList(id, refsById.get(id)?.aliases || []) : []
+  }));
+  if (targetChatId) {
+    const preferredTargetName = pickPreferredChatName(targetPlatform, targetChatId, targetChatRef?.name) || targetChatId;
+    if (!targetChatRef || targetChatRef.id !== targetChatId) {
+      targetChatRef = { id: targetChatId, name: preferredTargetName };
+    } else {
+      targetChatRef = { id: targetChatId, name: preferredTargetName };
+    }
+  } else {
+    targetChatRef = null;
   }
 
   return {
@@ -268,9 +653,11 @@ function normalizeAutomation(body, existingId) {
     sourcePlatform,
     targetPlatform,
     sourceChatIds,
+    sourceChatRefs,
     sourceChatId: sourceChatIds[0] || null,
     fastapiUrl: null,
     targetChatId,
+    targetChatRef,
     paused,
     keywords,
     frequencies,
@@ -328,9 +715,76 @@ function isFastapiDirection(flow) {
 let flows = [];
 
 const panelSessions = new Map();
+let panelAuthConfig = loadPanelAuthConfig();
+
+function hashPassword(password, saltHex) {
+  const salt = Buffer.from(String(saltHex || ''), 'hex');
+  return crypto.scryptSync(String(password || ''), salt, 64).toString('hex');
+}
+
+function buildPanelAuthRecord(user, password) {
+  const username = String(user || '').trim();
+  const pass = String(password || '').trim();
+  if (!username || !pass) return null;
+  const saltHex = crypto.randomBytes(16).toString('hex');
+  return {
+    user: username,
+    salt: saltHex,
+    passwordHash: hashPassword(pass, saltHex),
+    updatedAt: nowIso()
+  };
+}
+
+function loadPanelAuthConfig() {
+  try {
+    if (fs.existsSync(PANEL_AUTH_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(PANEL_AUTH_FILE, 'utf8'));
+      const user = String(raw?.user || '').trim();
+      const salt = String(raw?.salt || '').trim();
+      const passwordHash = String(raw?.passwordHash || '').trim();
+      if (user && salt && passwordHash) {
+        return { user, salt, passwordHash, source: 'file', updatedAt: raw?.updatedAt || null };
+      }
+    }
+  } catch {
+    /* ignore and fallback to env */
+  }
+  if (PANEL_USER && PANEL_PASSWORD) {
+    const envRecord = buildPanelAuthRecord(PANEL_USER, PANEL_PASSWORD);
+    if (envRecord) return { ...envRecord, source: 'env' };
+  }
+  return null;
+}
+
+function savePanelAuthConfig(user, password) {
+  const record = buildPanelAuthRecord(user, password);
+  if (!record) throw new Error('Логін і пароль не можуть бути порожніми');
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(PANEL_AUTH_FILE, JSON.stringify(record, null, 2), 'utf8');
+  panelAuthConfig = { ...record, source: 'file' };
+  return panelAuthConfig;
+}
+
+function clearPanelAuthConfig() {
+  panelAuthConfig = null;
+  try {
+    if (fs.existsSync(PANEL_AUTH_FILE)) {
+      fs.unlinkSync(PANEL_AUTH_FILE);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function verifyPanelCredentials(user, password) {
+  if (!panelAuthConfig) return false;
+  const username = String(user || '').trim();
+  const providedHash = hashPassword(String(password || ''), panelAuthConfig.salt);
+  return username === panelAuthConfig.user && providedHash === panelAuthConfig.passwordHash;
+}
 
 function isPanelAuthEnabled() {
-  return Boolean(PANEL_USER && PANEL_PASSWORD);
+  return Boolean(panelAuthConfig && panelAuthConfig.user && panelAuthConfig.passwordHash);
 }
 
 function panelAuthMiddleware(req, res, next) {
@@ -375,7 +829,7 @@ app.post('/api/panel-auth/login', (req, res) => {
   if (!isPanelAuthEnabled()) {
     return res.json({ ok: true, authDisabled: true });
   }
-  if (user === PANEL_USER && password === PANEL_PASSWORD) {
+  if (verifyPanelCredentials(user, password)) {
     const token = crypto.randomBytes(32).toString('hex');
     panelSessions.set(token, { created: Date.now() });
     res.cookie('wb_panel', token, {
@@ -398,27 +852,68 @@ app.post('/api/panel-auth/logout', (req, res) => {
 app.get('/api/panel-auth/me', (req, res) => {
   const ver = { version: APP_VERSION };
   if (!isPanelAuthEnabled()) {
-    return res.json({ ok: true, auth: true, authDisabled: true, ...ver });
+    return res.json({ ok: true, auth: true, authDisabled: true, user: null, source: 'none', ...ver });
   }
   const tok = req.cookies?.wb_panel;
   res.json({
     ok: true,
     auth: Boolean(tok && panelSessions.has(tok)),
     authDisabled: false,
+    user: panelAuthConfig?.user || null,
+    source: panelAuthConfig?.source || 'env',
     ...ver
   });
+});
+
+app.post('/api/panel-auth/settings', (req, res) => {
+  const { user, password } = req.body || {};
+  const login = String(user || '').trim();
+  const pass = String(password || '').trim();
+  const bothEmpty = !login && !pass;
+  if ((login && !pass) || (!login && pass)) {
+    return res.status(400).json({ ok: false, message: 'Заповніть обидва поля: логін і пароль, або залиште обидва порожніми.' });
+  }
+  try {
+    if (bothEmpty) {
+      clearPanelAuthConfig();
+      panelSessions.clear();
+      res.clearCookie('wb_panel');
+      pushLog('INFO', 'Panel auth disabled from settings');
+      return res.json({ ok: true, authDisabled: true, user: null, source: 'none' });
+    }
+    const cfg = savePanelAuthConfig(login, pass);
+    panelSessions.clear();
+    const token = crypto.randomBytes(32).toString('hex');
+    panelSessions.set(token, { created: Date.now() });
+    res.cookie('wb_panel', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 3600 * 1000
+    });
+    pushLog('INFO', 'Panel auth settings updated', { user: cfg.user, source: cfg.source });
+    return res.json({ ok: true, user: cfg.user, source: cfg.source });
+  } catch (e) {
+    return res.status(400).json({ ok: false, message: e.message || 'Не вдалося зберегти налаштування безпеки' });
+  }
 });
 
 let client = null;
 let isStarting = false;
 let isStopping = false;
 let heartbeatTimer = null;
+let activityLogTimer = null;
 let lastQr = null;
 let eventClients = [];
 let lastSendTs = 0;
 let signalPollTimer = null;
 let signalLastPollTs = 0;
+let signalLastLinkedProbeTs = 0;
+let signalLinkInProgress = false;
+let signalPollInFlight = false;
 const signalSeenMessageIds = new Set();
+const throttledLogTs = new Map();
+let activityCountersSnapshot = null;
+let activityIgnoredReasonsSnapshot = null;
 
 const state = {
   status: 'idle',
@@ -443,7 +938,29 @@ const state = {
     lastPollAt: null,
     lastErrorAt: null,
     lastError: null,
-    running: false
+    running: false,
+    lastLinkAt: null,
+    lastLinkErrorAt: null,
+    lastLinkError: null,
+    qrDataUrl: null,
+    linked: null,
+    linkedAccounts: [],
+    lastLinkedCheckAt: null,
+    recentIncomingChats: []
+  },
+  activity: {
+    lastMinute: {
+      received: 0,
+      accepted: 0,
+      ignored: 0,
+      posted: 0,
+      sent: 0,
+      errors: 0
+    },
+    lastMinuteAt: null
+    ,
+    ignoredReasonsTotal: {},
+    ignoredReasonsLastMinute: {}
   },
   counters: {
     received: 0,
@@ -556,6 +1073,72 @@ function pushLog(level, message, meta = null) {
   broadcastEvent('log', line);
 }
 
+function pushLogThrottled(key, minIntervalMs, level, message, meta = null) {
+  const now = Date.now();
+  const last = Number(throttledLogTs.get(key) || 0);
+  if (now - last < Math.max(0, Number(minIntervalMs) || 0)) return;
+  throttledLogTs.set(key, now);
+  pushLog(level, message, meta);
+}
+
+function noteIgnored(reason) {
+  state.counters.ignored += 1;
+  const key = String(reason || 'unknown');
+  const cur = Number(state.activity.ignoredReasonsTotal[key] || 0);
+  state.activity.ignoredReasonsTotal[key] = cur + 1;
+}
+
+function startActivitySummaryLogs() {
+  if (activityLogTimer) return;
+  activityCountersSnapshot = { ...state.counters };
+  activityIgnoredReasonsSnapshot = { ...(state.activity.ignoredReasonsTotal || {}) };
+  activityLogTimer = setInterval(() => {
+    const cur = state.counters;
+    const prev = activityCountersSnapshot || {
+      received: 0,
+      accepted: 0,
+      ignored: 0,
+      posted: 0,
+      sent: 0,
+      errors: 0
+    };
+    const delta = {
+      received: Math.max(0, Number(cur.received || 0) - Number(prev.received || 0)),
+      accepted: Math.max(0, Number(cur.accepted || 0) - Number(prev.accepted || 0)),
+      ignored: Math.max(0, Number(cur.ignored || 0) - Number(prev.ignored || 0)),
+      posted: Math.max(0, Number(cur.posted || 0) - Number(prev.posted || 0)),
+      sent: Math.max(0, Number(cur.sent || 0) - Number(prev.sent || 0)),
+      errors: Math.max(0, Number(cur.errors || 0) - Number(prev.errors || 0))
+    };
+    const reasonsNow = { ...(state.activity.ignoredReasonsTotal || {}) };
+    const reasonsPrev = { ...(activityIgnoredReasonsSnapshot || {}) };
+    const reasonKeys = new Set([...Object.keys(reasonsNow), ...Object.keys(reasonsPrev)]);
+    const ignoredReasonsMinute = {};
+    for (const k of reasonKeys) {
+      const d = Math.max(0, Number(reasonsNow[k] || 0) - Number(reasonsPrev[k] || 0));
+      if (d > 0) ignoredReasonsMinute[k] = d;
+    }
+    state.activity.lastMinute = delta;
+    state.activity.ignoredReasonsLastMinute = ignoredReasonsMinute;
+    state.activity.lastMinuteAt = nowIso();
+    activityCountersSnapshot = { ...cur };
+    activityIgnoredReasonsSnapshot = reasonsNow;
+    pushLog('INFO', 'Minute activity', {
+      minute: delta,
+      ignoredReasonsMinute,
+      total: {
+        received: cur.received,
+        accepted: cur.accepted,
+        ignored: cur.ignored,
+        posted: cur.posted,
+        sent: cur.sent,
+        errors: cur.errors,
+        ignoredReasonsTotal: reasonsNow
+      }
+    });
+  }, 60000);
+}
+
 function getPublicState() {
   return {
     status: state.status,
@@ -597,7 +1180,13 @@ function setStatus(status, patch = {}) {
   broadcastEvent('state', getPublicState());
 }
 
-async function signalApiRequest(method, endpoint, data = undefined, params = undefined) {
+async function signalApiRequest(
+  method,
+  endpoint,
+  data = undefined,
+  params = undefined,
+  timeoutMs = 30000
+) {
   if (!SIGNAL_API_URL) {
     throw new Error('SIGNAL_API_URL is not configured');
   }
@@ -607,7 +1196,7 @@ async function signalApiRequest(method, endpoint, data = undefined, params = und
     url,
     data,
     params,
-    timeout: 30000
+    timeout: Math.max(1000, Number(timeoutMs) || 30000)
   });
   return res.data;
 }
@@ -641,6 +1230,11 @@ function normalizeSignalMessages(raw) {
     .map((m) => {
       const id = String(m.id || m.messageId || m.uuid || '').trim();
       const chatId = String(m.chatId || m.source || m.groupId || '').trim();
+      const rawCandidates = Array.isArray(m.chatCandidates) ? m.chatCandidates : [];
+      const chatCandidates = rawCandidates
+        .map((x) => String(x || '').trim())
+        .filter(Boolean);
+      if (chatId && !chatCandidates.includes(chatId)) chatCandidates.unshift(chatId);
       const text = String(m.text || m.message || m.body || '').trim();
       const author = m.author || m.sender || null;
       const tsRaw = Number(m.timestamp || m.ts || Date.now());
@@ -648,6 +1242,7 @@ function normalizeSignalMessages(raw) {
       return {
         id: id || `signal_${chatId}_${tsRaw}_${Math.random().toString(36).slice(2, 8)}`,
         chatId,
+        chatCandidates,
         text,
         author,
         timestamp: Number.isFinite(tsRaw) ? tsRaw : Date.now()
@@ -656,9 +1251,67 @@ function normalizeSignalMessages(raw) {
     .filter(Boolean);
 }
 
+function signalIdCandidates(value) {
+  const out = [];
+  const push = (v) => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    if (!out.includes(s)) out.push(s);
+  };
+  const v = String(value || '').trim();
+  if (!v) return out;
+  push(v);
+  if (v.startsWith('group.')) push(v.slice(6));
+  else {
+    push(`group.${v}`);
+  }
+  return out;
+}
+
 async function fetchSignalChats() {
-  const raw = await signalApiRequest('get', '/chats');
-  return normalizeSignalChatList(raw);
+  const raw = await signalApiRequest('get', '/chats', undefined, undefined, 120000);
+  const list = normalizeSignalChatList(raw);
+  upsertChatDirectory('signal', list);
+  return list;
+}
+
+async function checkSignalLinkedStatus() {
+  if (!SIGNAL_API_URL) return null;
+  if (signalLinkInProgress) return null;
+  try {
+    const base = SIGNAL_API_URL.replace(/\/+$/, '');
+    const rawRes = await axios.get(`${base}/linked`, { timeout: 70000 });
+    const raw = rawRes.data;
+    const accounts = Array.isArray(raw?.accounts)
+      ? raw.accounts.map((x) => String(x || '').trim()).filter(Boolean)
+      : [];
+    const linked = Boolean(raw?.linked);
+    state.signal.linked = linked;
+    state.signal.linkedAccounts = accounts;
+    state.signal.lastLinkedCheckAt = nowIso();
+    if (linked) {
+      state.signal.qrDataUrl = null;
+    }
+    return { linked, accounts };
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      // Old bridge versions may not support /linked yet.
+      return null;
+    }
+    state.signal.lastLinkedCheckAt = nowIso();
+    state.signal.linked = null;
+    state.signal.linkedAccounts = [];
+    state.signal.lastErrorAt = nowIso();
+    state.signal.lastError = error.message;
+    pushLogThrottled(
+      'signal_linked_status_failed',
+      60000,
+      'ERROR',
+      'Signal linked status check failed',
+      { message: error.message }
+    );
+    return null;
+  }
 }
 
 async function sendSignalMessage(chatId, text) {
@@ -666,6 +1319,82 @@ async function sendSignalMessage(chatId, text) {
     chatId,
     text
   });
+}
+
+async function requestSignalLinkQr(deviceName, options = {}) {
+  const allowDockerFallback =
+    options.allowDockerFallback !== undefined
+      ? Boolean(options.allowDockerFallback)
+      : SIGNAL_LINK_ALLOW_DOCKER_FALLBACK;
+  const reqLabel = options.auto ? 'Signal auto-link request' : 'Signal link request';
+  const name = String(deviceName || 'wa-bridge').trim() || 'wa-bridge';
+  pushLog('INFO', reqLabel, { deviceName: name });
+  if (SIGNAL_API_URL) {
+    try {
+      await signalApiRequest('get', '/health', undefined, undefined, 6000);
+    } catch (healthErr) {
+      state.signal.lastLinkErrorAt = nowIso();
+      state.signal.lastLinkError = healthErr.message || 'Signal bridge health check failed';
+      throw new Error(
+        'Signal bridge недоступний (health check). Перевірте, що Docker Desktop запущений і сервіси signal-cli-api/signal-bridge працюють.'
+      );
+    }
+    try {
+      let data;
+      try {
+        data = await signalApiRequest(
+          'post',
+          '/link',
+          { name },
+          undefined,
+          SIGNAL_LINK_TIMEOUT_MS
+        );
+      } catch (_firstErr) {
+        await sleep(1500);
+        data = await signalApiRequest(
+          'post',
+          '/link',
+          { name },
+          undefined,
+          SIGNAL_LINK_TIMEOUT_MS
+        );
+      }
+      if (data?.ok && data?.qrDataUrl) {
+        state.signal.lastLinkAt = nowIso();
+        state.signal.lastLinkErrorAt = null;
+        state.signal.lastLinkError = null;
+        state.signal.qrDataUrl = data.qrDataUrl;
+        checkSignalLinkedStatus().catch(() => {});
+        return { ok: true, uri: null, qrDataUrl: data.qrDataUrl };
+      }
+      throw new Error(
+        data?.message ||
+          `Signal bridge /link returned invalid payload: ${JSON.stringify({
+            ok: data?.ok,
+            hasQrDataUrl: Boolean(data?.qrDataUrl)
+          })}`
+      );
+    } catch (e) {
+      state.signal.lastLinkErrorAt = nowIso();
+      state.signal.lastLinkError = e.message || 'Signal bridge /link failed';
+      if (!allowDockerFallback) {
+        throw new Error(
+          'Signal bridge /link повернув помилку. Повторіть QR або перевірте signal-bridge/signal-cli-api логи.'
+        );
+      }
+      pushLog('WARN', 'Signal link fallback to docker exec enabled', {
+        env: 'SIGNAL_LINK_ALLOW_DOCKER_FALLBACK=1'
+      });
+    }
+  }
+  const uri = await dockerExecSignalLink(name);
+  const qrDataUrl = await QRCode.toDataURL(uri, { width: 420, margin: 2 });
+  state.signal.lastLinkAt = nowIso();
+  state.signal.lastLinkErrorAt = null;
+  state.signal.lastLinkError = null;
+  state.signal.qrDataUrl = qrDataUrl;
+  checkSignalLinkedStatus().catch(() => {});
+  return { ok: true, uri, qrDataUrl };
 }
 
 function writeHealth() {
@@ -815,23 +1544,74 @@ async function postToFastAPI(payload, url = FASTAPI_URL) {
 
 async function processSignalIncomingMessage(message) {
   const chatId = message.chatId;
+  const incomingCandidates = new Set(
+    (Array.isArray(message.chatCandidates) ? message.chatCandidates : [])
+      .flatMap((x) => signalIdCandidates(x))
+  );
+  for (const x of signalIdCandidates(chatId)) incomingCandidates.add(x);
   const rawText = String(message.text || '').trim();
-  const flow = flows.find((f) => {
-    const p = inferPlatforms(f);
-    return p.sourcePlatform === 'signal' && getSourceIds(f).includes(chatId);
-  });
-  if (!flow) return;
+  noteSignalIncomingChat(chatId, rawText);
+  const isTestProbe = /\btest\b/i.test(rawText);
+  let flow = findSignalFlowByIncomingCandidates(incomingCandidates);
+  if (isTestProbe) {
+    pushLogThrottled(
+      `signal_test_probe_pre_${chatId}`,
+      2000,
+      'INFO',
+      'Signal test probe received',
+      {
+        text: rawText.slice(0, 120),
+        chatId,
+        chatCandidates: Array.from(incomingCandidates).slice(0, 12),
+        matchedFlow: flow ? { id: flow.id, name: flow.name } : null
+      }
+    );
+  }
+  if (!flow && AUTO_SIGNAL_SOURCE_AUTOREMAP) {
+    autoRemapSignalFlowsFromDirectory(false);
+    flow = findSignalFlowByIncomingCandidates(incomingCandidates);
+    if (isTestProbe) {
+      pushLogThrottled(
+        `signal_test_probe_post_${chatId}`,
+        2000,
+        'INFO',
+        'Signal test probe after remap check',
+        {
+          chatId,
+          matchedFlow: flow ? { id: flow.id, name: flow.name } : null
+        }
+      );
+    }
+  }
+  if (!flow) {
+    const configuredSignalSources = flows
+      .filter((f) => inferPlatforms(f).sourcePlatform === 'signal')
+      .flatMap((f) => getSourceIds(f));
+    pushLogThrottled(
+      `signal_no_flow_match_${chatId}`,
+      60000,
+      'INFO',
+      'Signal message ignored: no matching source chat',
+      {
+        chatId,
+        chatCandidates: Array.from(incomingCandidates).slice(0, 8),
+        configuredSources: configuredSignalSources.slice(0, 20),
+        configuredSourcesCount: configuredSignalSources.length
+      }
+    );
+    return;
+  }
 
   state.lastEventAt = nowIso();
   state.lastMessageAt = nowIso();
   state.counters.received += 1;
 
   if (flow.paused) {
-    state.counters.ignored += 1;
+    noteIgnored('signal_paused');
     return;
   }
   if (!passesFlowContentFilters(flow, rawText)) {
-    state.counters.ignored += 1;
+    noteIgnored('signal_filter_miss');
     return;
   }
   state.counters.accepted += 1;
@@ -906,11 +1686,37 @@ async function processSignalIncomingMessage(message) {
 
 async function pollSignalMessages() {
   if (!SIGNAL_API_URL) return;
+  if (signalLinkInProgress) return;
+  if (signalPollInFlight) return;
+  signalPollInFlight = true;
+  // Do not hammer /messages until account is linked.
+  if (state.signal.linked !== true) {
+    const now = Date.now();
+    if (now - signalLastLinkedProbeTs >= 15000) {
+      signalLastLinkedProbeTs = now;
+      await checkSignalLinkedStatus();
+    }
+    signalPollInFlight = false;
+    return;
+  }
   try {
-    const raw = await signalApiRequest('get', '/messages', undefined, {
-      since: signalLastPollTs || undefined
-    });
+    const raw = await signalApiRequest(
+      'get',
+      '/messages',
+      undefined,
+      { since: signalLastPollTs || undefined },
+      90000
+    );
     const msgs = normalizeSignalMessages(raw);
+    if (msgs.length > 0) {
+      pushLogThrottled(
+        'signal_messages_fetched',
+        15000,
+        'INFO',
+        'Signal messages fetched',
+        { count: msgs.length }
+      );
+    }
     state.signal.lastPollAt = nowIso();
     signalLastPollTs = Date.now();
     for (const m of msgs) {
@@ -925,13 +1731,22 @@ async function pollSignalMessages() {
   } catch (error) {
     state.signal.lastErrorAt = nowIso();
     state.signal.lastError = error.message;
-    pushLog('ERROR', 'Signal polling failed', { message: error.message });
+    pushLogThrottled(
+      'signal_polling_failed',
+      60000,
+      'ERROR',
+      'Signal polling failed',
+      { message: error.message }
+    );
+  } finally {
+    signalPollInFlight = false;
   }
 }
 
 function startSignalWorker() {
   if (!SIGNAL_API_URL || signalPollTimer) return;
   state.signal.running = true;
+  checkSignalLinkedStatus().catch(() => {});
   pollSignalMessages().catch(() => {});
   signalPollTimer = setInterval(() => {
     pollSignalMessages().catch(() => {});
@@ -1027,6 +1842,9 @@ function attachClientEvents(instance) {
     state.clientInfo = clientInfo;
     setStatus('ready');
     pushLog('INFO', 'Client ready', clientInfo);
+    setTimeout(() => {
+      prefetchChatsInBackground().catch(() => {});
+    }, 400);
   });
 
   instance.on('disconnected', (reason) => {
@@ -1043,7 +1861,6 @@ function attachClientEvents(instance) {
     try {
       state.lastEventAt = nowIso();
       state.lastMessageAt = nowIso();
-      state.counters.received += 1;
 
       const chatId = getChatId(msg);
       const rawText = String(msg.body || '').trim();
@@ -1054,15 +1871,9 @@ function attachClientEvents(instance) {
           const p = inferPlatforms(f);
           return p.sourcePlatform === 'whatsapp' && getSourceIds(f).includes(chatId);
         });
-        if (!flow) {
-          state.counters.ignored += 1;
-          return;
-        }
+        if (!flow) return;
       } else {
-        if (!SOURCE_CHAT || chatId !== SOURCE_CHAT) {
-          state.counters.ignored += 1;
-          return;
-        }
+        if (!SOURCE_CHAT || chatId !== SOURCE_CHAT) return;
         let kwE = SOURCE_FILTER_KEYWORDS;
         let frE = SOURCE_FILTER_FREQUENCIES;
         if (
@@ -1087,8 +1898,11 @@ function attachClientEvents(instance) {
         };
       }
 
+      // KPI statistics count only messages that match configured source chats.
+      state.counters.received += 1;
+
       if (flow.paused === true) {
-        state.counters.ignored += 1;
+        noteIgnored('wa_paused');
         pushLog('INFO', 'Автоматизація на паузі', {
           flowId: flow.id,
           name: flow.name
@@ -1097,7 +1911,7 @@ function attachClientEvents(instance) {
       }
 
       if (!passesFlowContentFilters(flow, rawText)) {
-        state.counters.ignored += 1;
+        noteIgnored('wa_filter_miss');
         pushLog('INFO', 'Пропуск: не пройшли фільтри ключових слів / частот', {
           flowId: flow.id,
           name: flow.name
@@ -1279,16 +2093,56 @@ async function startBot() {
   });
 
   try {
-    client = new Client({
-      authStrategy: new LocalAuth(),
-      puppeteer: {
-        headless: HEADLESS,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      }
+    const browserExecutable = resolveChromeExecutablePath();
+    const buildPuppeteerOptions = () => ({
+      headless: HEADLESS,
+      timeout: WA_LAUNCH_TIMEOUT_MS,
+      protocolTimeout: WA_PROTOCOL_TIMEOUT_MS,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
     });
+    let puppeteerOptions = buildPuppeteerOptions();
+    if (browserExecutable) {
+      puppeteerOptions.executablePath = browserExecutable;
+      pushLog('INFO', 'Using system browser for Puppeteer', { executablePath: browserExecutable });
+    } else {
+      pushLog('WARN', 'System browser not found, using bundled Chromium');
+    }
 
+    const makeClient = (options) =>
+      new Client({
+        authStrategy: new LocalAuth(),
+        puppeteer: options
+      });
+
+    client = makeClient(puppeteerOptions);
     attachClientEvents(client);
-    await client.initialize();
+    try {
+      await client.initialize();
+    } catch (firstErr) {
+      const msg = String(firstErr?.message || '');
+      const isNavigateTimeout =
+        msg.includes('Page.navigate timed out') || msg.includes('protocolTimeout');
+      if (!isNavigateTimeout) throw firstErr;
+      pushLog('WARN', 'WA init timeout, retrying once with larger timeouts', {
+        message: firstErr.message
+      });
+      try { await client.destroy(); } catch {}
+      client = null;
+      puppeteerOptions = {
+        ...buildPuppeteerOptions(),
+        timeout: WA_LAUNCH_TIMEOUT_MS * 2,
+        protocolTimeout: WA_PROTOCOL_TIMEOUT_MS * 2
+      };
+      if (browserExecutable) puppeteerOptions.executablePath = browserExecutable;
+      client = makeClient(puppeteerOptions);
+      attachClientEvents(client);
+      await client.initialize();
+    }
     startSignalWorker();
 
     pushLog('INFO', 'Bot initialize requested', { headless: HEADLESS });
@@ -1455,26 +2309,36 @@ app.post('/api/reset-session', async (req, res) => {
 });
 
 app.post('/api/signal/link', async (req, res) => {
+  if (signalLinkInProgress) {
+    return res.status(409).json({
+      ok: false,
+      message: 'Генерація QR вже виконується. Дочекайтесь завершення поточного запиту.'
+    });
+  }
   try {
     const deviceName = String(req.body?.name || 'wa-bridge').trim();
-    pushLog('INFO', 'Signal link request', { deviceName });
-    if (SIGNAL_API_URL) {
-      try {
-        const data = await signalApiRequest('post', '/link', { name: deviceName });
-        if (data?.ok && data?.qrDataUrl) {
-          return res.json({ ok: true, uri: null, qrDataUrl: data.qrDataUrl });
-        }
-        throw new Error(data?.message || 'Signal bridge /link returned invalid payload');
-      } catch (e) {
-        pushLog('ERROR', 'Signal link via bridge failed, fallback to docker exec', { message: e.message });
-      }
-    }
-    const uri = await dockerExecSignalLink(deviceName);
-    const qrDataUrl = await QRCode.toDataURL(uri, { width: 420, margin: 2 });
-    res.json({ ok: true, uri, qrDataUrl });
+    signalLinkInProgress = true;
+    const out = await requestSignalLinkQr(deviceName, { auto: false });
+    res.json(out);
   } catch (error) {
+    state.signal.lastLinkErrorAt = nowIso();
+    state.signal.lastLinkError = error.message || String(error);
     pushLog('ERROR', 'Signal link request failed', { message: error.message || String(error) });
     res.status(500).json({ ok: false, message: error.message || String(error) });
+  } finally {
+    signalLinkInProgress = false;
+  }
+});
+
+app.get('/api/signal/linked-check', async (_req, res) => {
+  try {
+    if (signalLinkInProgress) {
+      return res.json({ ok: true, busy: true, signal: state.signal, result: null });
+    }
+    const result = await checkSignalLinkedStatus();
+    return res.json({ ok: true, signal: state.signal, result });
+  } catch (error) {
+    return res.status(500).json({ ok: false, message: error.message || String(error) });
   }
 });
 
@@ -1484,8 +2348,12 @@ app.get('/api/chats', async (req, res) => {
     if (platform === 'signal') {
       if (!SIGNAL_API_URL) return res.json({ ok: true, chats: [] });
       try {
+        const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
         const list = await fetchSignalChats();
-        return res.json({ ok: true, chats: list });
+        const chats = onlyGroups
+          ? list.filter((c) => !/^\+?\d+$/.test(String(c.id || '').trim()))
+          : list;
+        return res.json({ ok: true, chats });
       } catch (error) {
         return res.status(500).json({ ok: false, message: error.message });
       }
@@ -1508,6 +2376,7 @@ app.get('/api/chats', async (req, res) => {
         name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+    upsertChatDirectory('whatsapp', list);
     res.json({ ok: true, chats: list });
   } catch (error) {
     res.status(500).json({ ok: false, message: error.message });
@@ -1602,8 +2471,115 @@ app.delete('/api/flows/:id', (req, res) => {
 
 app.use(express.static(PUBLIC_DIR));
 
+async function prefetchChatsInBackground() {
+  try {
+    if (SIGNAL_API_URL) {
+      const signalList = await fetchSignalChats();
+      enrichFlowRefsFromDirectory();
+      if (AUTO_SIGNAL_SOURCE_AUTOREMAP) {
+        autoRemapSignalFlowsFromDirectory(true);
+      }
+      pushLogThrottled(
+        'signal_chats_prefetched',
+        120000,
+        'INFO',
+        'Signal chats prefetched in background',
+        { count: signalList.length }
+      );
+    }
+  } catch (e) {
+    pushLogThrottled(
+      'signal_chats_prefetch_failed',
+      120000,
+      'WARN',
+      'Signal chats prefetch failed',
+      { message: e.message || String(e) }
+    );
+  }
+  try {
+    if (client && state.ready) {
+      const chats = await client.getChats();
+      const list = chats
+        .map((c) => ({
+          id: c.id._serialized,
+          name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
+        }))
+        .filter((x) => x.id && x.name);
+      upsertChatDirectory('whatsapp', list);
+      enrichFlowRefsFromDirectory();
+      pushLogThrottled(
+        'wa_chats_prefetched',
+        120000,
+        'INFO',
+        'WhatsApp chats prefetched in background',
+        { count: list.length }
+      );
+    }
+  } catch (e) {
+    pushLogThrottled(
+      'wa_chats_prefetch_failed',
+      120000,
+      'WARN',
+      'WhatsApp chats prefetch failed',
+      { message: e.message || String(e) }
+    );
+  }
+}
+
+async function startupAutoInit() {
+  if (!AUTO_START_BOT_ON_SERVICE_START) {
+    pushLog('INFO', 'Auto-start disabled by AUTO_START_BOT_ON_SERVICE_START=0');
+    return;
+  }
+  const started = await startBot();
+  if (!started.ok) {
+    pushLog('ERROR', 'Auto-start failed', { message: started.message || 'unknown error' });
+    return;
+  }
+  if (!SIGNAL_API_URL) {
+    prefetchChatsInBackground().catch(() => {});
+    return;
+  }
+  // On normal restarts, do linked checks with retry instead of forcing relink.
+  for (let i = 0; i < 4; i += 1) {
+    try {
+      const linkedStatus = await checkSignalLinkedStatus();
+      if (linkedStatus?.linked === true) {
+        pushLog('INFO', 'Signal already linked, startup check passed');
+        prefetchChatsInBackground().catch(() => {});
+        return;
+      }
+    } catch {
+      // ignore transient checks, retry below
+    }
+    await sleep(5000 * (i + 1));
+  }
+  pushLog(
+    'WARN',
+    'Signal linked check did not confirm linked state after startup retries; relink remains manual'
+  );
+  if (!AUTO_SIGNAL_RELINK_ON_SERVICE_START) {
+    prefetchChatsInBackground().catch(() => {});
+    return;
+  }
+  try {
+    if (signalLinkInProgress) return;
+    signalLinkInProgress = true;
+    const out = await requestSignalLinkQr('wa-bridge', { auto: true });
+    pushLog('INFO', 'Signal relink QR generated automatically', {
+      hasQrDataUrl: Boolean(out?.qrDataUrl)
+    });
+  } catch (error) {
+    pushLog('ERROR', 'Signal auto-relink failed', { message: error.message || String(error) });
+  } finally {
+    signalLinkInProgress = false;
+    prefetchChatsInBackground().catch(() => {});
+  }
+}
+
 app.listen(PORT, () => {
   startHeartbeat();
+  startActivitySummaryLogs();
   setStatus('idle');
   pushLog('INFO', `Control panel started at http://localhost:${PORT}`);
   if (!isPanelAuthEnabled()) {
@@ -1614,4 +2590,9 @@ app.listen(PORT, () => {
   }
   pushLog('INFO', 'Browser auto-open disabled in server');
   pushLog('INFO', `WA Bridge ${APP_VERSION}`);
+  setTimeout(() => {
+    startupAutoInit().catch((e) => {
+      pushLog('ERROR', 'Startup auto-init failed', { message: e.message || String(e) });
+    });
+  }, 1200);
 });

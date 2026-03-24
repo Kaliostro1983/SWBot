@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  signal-cli-api:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: signal-cli-api
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Вкажіть номер, який використовується в signal-cli.
+      # Для кількох номерів можна додати через кому.
+      - MODE=normal
+    volumes:
+      - signal_cli_data:/home/.local/share/signal-cli
+
+  signal-bridge:
+    build:
+      context: ./signal-bridge
+    container_name: signal-bridge
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - SIGNAL_CLI_BASE_URL=http://signal-cli-api:8080
+      # Той самий номер, який зареєстрований у signal-cli-rest-api
+      - SIGNAL_ACCOUNT_NUMBER=+380632445475
+      - SIGNAL_RECEIVE_TIMEOUT_SEC=1
+    depends_on:
+      - signal-cli-api
+
+volumes:
+  signal_cli_data:

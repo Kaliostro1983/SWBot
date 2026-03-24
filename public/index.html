@@ -134,25 +134,33 @@
     }
     .subtabs {
       display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
+      gap: 6px;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+      padding: 0 8px;
     }
     .subtab-btn {
-      border: 1px solid var(--border);
-      background: var(--panel2);
+      border: 1px solid transparent;
+      border-bottom: none;
+      background: transparent;
       color: var(--text);
-      border-radius: 10px;
-      padding: 9px 14px;
-      font-size: 13px;
+      border-radius: 14px 14px 0 0;
+      padding: 12px 18px;
+      font-size: 14px;
       font-weight: 700;
       cursor: pointer;
+      margin-bottom: -1px;
+      opacity: 0.78;
     }
+    .subtab-btn:hover { opacity: 1; background: rgba(255,255,255,0.04); }
     .subtab-btn.active {
-      background: var(--accent-dim);
-      color: var(--accent);
-      border-color: rgba(45, 212, 191, 0.45);
+      background: var(--panel);
+      color: var(--text);
+      border-color: var(--border);
+      box-shadow: inset 0 3px 0 0 var(--accent);
+      opacity: 1;
     }
-    .subview { display: none; }
+    .subview { display: none; padding-top: 16px; }
     .subview.active { display: block; }
     button, .btn {
       border: none;
@@ -197,6 +205,32 @@
       grid-template-columns: 1fr 1fr;
       gap: 16px;
     }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      border-radius: 10px;
+      padding: 8px 10px;
+      min-height: 54px;
+    }
+    .kpi .kpi-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 4px;
+    }
+    .kpi .kpi-value {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+    }
     @media (max-width: 1100px) {
       .aside { display: none; }
     }
@@ -221,6 +255,14 @@
     }
     .stat .label { color: var(--muted); }
     #statusBadge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #334155;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    #signalStatusBadge {
       display: inline-block;
       padding: 6px 12px;
       border-radius: 999px;
@@ -437,6 +479,97 @@
       border: 1px solid #1e293b;
       margin-top: 12px;
     }
+    .signal-alert {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      background: rgba(127, 29, 29, 0.22);
+      color: #fecaca;
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+    }
+    .inline-note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .inline-note.error {
+      color: #fecaca;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .chip button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+    }
+    .chat-picker {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel2);
+      padding: 8px;
+      min-height: 44px;
+    }
+    .chat-picker input {
+      width: 100%;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 14px;
+      padding: 4px 2px;
+    }
+    .chat-picker .chips {
+      margin: 0 0 4px;
+    }
+    .chat-dropdown {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      z-index: 120;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 10px;
+      max-height: 220px;
+      overflow: auto;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    .chat-dropdown.open { display: block; }
+    .chat-option {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(148,163,184,0.16);
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .chat-option:last-child { border-bottom: none; }
+    .chat-option:hover { background: rgba(45,212,191,0.12); }
+    .chat-option.selected { background: rgba(45,212,191,0.2); color: var(--accent); }
     .modal-section {
       margin-bottom: 18px;
       padding-bottom: 14px;
@@ -501,6 +634,15 @@
               <div class="stat"><span class="label">Захист панелі</span><span id="panelAuthNote">—</span></div>
               <div class="stat"><span class="label">FastAPI за замовчуванням</span><span id="panelFastapiUrl">—</span></div>
               <div class="stat"><span class="label">Чат відповідей (.env)</span><span id="panelTargetEnv">—</span></div>
+            <div class="sub" style="margin-top:12px;">Активність за останню хвилину <span id="lastMinuteAt" style="font-size:12px; color:var(--muted);">—</span></div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="kpi-label">received</div><div class="kpi-value" id="kpiReceived">0</div></div>
+              <div class="kpi"><div class="kpi-label">accepted</div><div class="kpi-value" id="kpiAccepted">0</div></div>
+              <div class="kpi"><div class="kpi-label">ignored</div><div class="kpi-value" id="kpiIgnored">0</div></div>
+              <div class="kpi"><div class="kpi-label">posted</div><div class="kpi-value" id="kpiPosted">0</div></div>
+              <div class="kpi"><div class="kpi-label">sent</div><div class="kpi-value" id="kpiSent">0</div></div>
+              <div class="kpi"><div class="kpi-label">errors</div><div class="kpi-value" id="kpiErrors">0</div></div>
+            </div>
             </div>
             <div class="card">
               <h2>Signal</h2>
@@ -551,15 +693,21 @@
           <div class="card">
             <h2>Signal інтеграція</h2>
             <p class="sub">На цьому етапі Signal працює через bridge API.</p>
+            <div style="margin-bottom: 12px;"><span id="signalStatusBadge">—</span></div>
             <div class="stat"><span class="label">Bridge URL</span><span id="signalApiHint">Див. `SIGNAL_API_URL` у `.env`</span></div>
             <div class="stat"><span class="label">Стан worker</span><span id="signalRunning2">—</span></div>
+            <div class="stat"><span class="label">Прив'язано акаунт</span><span id="signalLinked">—</span></div>
             <div class="stat"><span class="label">Останній poll</span><span id="signalLastPollAt2">—</span></div>
+            <div class="stat"><span class="label">Перевірка linked</span><span id="signalLastLinkedCheckAt">—</span></div>
             <div class="stat"><span class="label">Остання помилка</span><span id="signalLastError2">—</span></div>
+            <div class="stat"><span class="label">Останній /link</span><span id="signalLastLinkAt">—</span></div>
+            <div class="stat"><span class="label">Помилка bridge /link</span><span id="signalLastLinkError">—</span></div>
 
             <div class="toolbar" style="margin-top:14px;">
               <button type="button" class="btn btn-accent" id="signalLoginBtn" onclick="signalLoginQr()" title="Згенеруєте новий link та QR для підключення пристрою в Signal">Увійти (QR)</button>
-              <button type="button" class="btn btn-ghost" onclick="signalLoginQr()" title="Оновити QR link">Оновити QR</button>
+              <button type="button" class="btn btn-ghost" id="signalRefreshBtn" onclick="signalLoginQr()" title="Оновити QR link">Оновити QR</button>
             </div>
+            <div id="signalLinkAlert" class="signal-alert"></div>
             <img id="signalQr" alt="Signal QR" style="display:none; width: 260px; border-radius: 12px; background: #fff; padding: 10px; margin-top: 8px;" />
             <div id="signalConsole" class="signal-console"></div>
           </div>
@@ -588,8 +736,26 @@
             <label><input type="checkbox" id="showChatIdsToggle" /> Показувати ID</label>
           </div>
           <div class="field">
-            <label><input type="checkbox" id="showOnlyGroupsToggle" checked /> Показувати у WhatsApp лише групи</label>
+            <label><input type="checkbox" id="showOnlyGroupsToggle" checked /> Показувати лише групи (WhatsApp + Signal)</label>
           </div>
+        </div>
+        <div class="card">
+          <h2>Безпека</h2>
+          <p class="sub">Налаштування доступу до панелі керування.</p>
+          <form id="securityForm">
+            <div class="field">
+              <label for="securityUser">Логін</label>
+              <input id="securityUser" maxlength="80" autocomplete="username" placeholder="Введіть логін" />
+            </div>
+            <div class="field">
+              <label for="securityPassword">Пароль</label>
+              <input id="securityPassword" type="password" autocomplete="new-password" placeholder="Введіть пароль" />
+            </div>
+            <div class="toolbar" style="margin-bottom:0;">
+              <button type="submit" class="btn btn-accent">Зберегти безпеку</button>
+            </div>
+          </form>
+          <div id="securityStatus" class="inline-note"></div>
         </div>
       </section>
     </main>
@@ -647,23 +813,31 @@
           <div class="field" id="flowSourcesWaWrap">
             <label for="flowSources">Звідки надсилати (оберіть кілька)</label>
             <div class="field-row">
-              <div class="field">
-                <select id="flowSources" multiple></select>
+              <div class="field chat-picker" id="flowSourcesPicker">
+                <div id="flowSourcesSelected" class="chips"></div>
+                <input id="flowSourcesSearch" type="text" placeholder="Пошук і додавання чатів..." autocomplete="off" />
+                <div id="flowSourcesDropdown" class="chat-dropdown"></div>
+                <select id="flowSources" multiple style="display:none;"></select>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats(true)">Оновити</button>
             </div>
+            <div id="flowSourcesStatus" class="inline-note"></div>
             <p class="sub field-hint">Оберіть один або кілька чатів джерела (Ctrl/Shift для мультивибору).</p>
           </div>
           <div class="field" id="flowTargetWrap" style="display: none">
             <label for="flowTarget">Куди надсилати</label>
             <div class="field-row">
-              <div class="field">
-                <select id="flowTarget">
+              <div class="field chat-picker" id="flowTargetPicker">
+                <div id="flowTargetSelected" class="chips"></div>
+                <input id="flowTargetSearch" type="text" placeholder="Пошук цільового чату..." autocomplete="off" />
+                <div id="flowTargetDropdown" class="chat-dropdown"></div>
+                <select id="flowTarget" style="display:none;">
                   <option value="">— Оберіть групу —</option>
                 </select>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats(true)">Оновити</button>
             </div>
+            <div id="flowTargetStatus" class="inline-note"></div>
           </div>
         </div>
         <div class="modal-section">
@@ -717,8 +891,19 @@
     const logsEl = document.getElementById('logs');
     const qrEl = document.getElementById('qr');
     let chatsCacheByPlatform = { whatsapp: [], signal: [] };
+    let chatsCacheAtByPlatform = { whatsapp: 0, signal: 0 };
     let cachedFlowsSnapshot = [];
+    let flowChatRefsById = {};
+    const CHATS_CACHE_TTL_MS = 5 * 60 * 1000;
+    let flowSelectedSourceIds = new Set();
+    let flowTargetChatId = '';
     const signalConsoleEl = document.getElementById('signalConsole');
+    const signalLinkAlertEl = document.getElementById('signalLinkAlert');
+    let signalLinkWatchTimer = null;
+    let signalLinkWatchStartTs = 0;
+    let signalLinkWatchRequestInFlight = false;
+    let lastStateSnapshot = null;
+    let backgroundWarmupStarted = false;
 
     const ICON_COPY =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
@@ -773,6 +958,85 @@
       signalConsoleEl.scrollTop = signalConsoleEl.scrollHeight;
     }
 
+    function setSignalLinkAlert(text) {
+      if (!signalLinkAlertEl) return;
+      const msg = String(text || '').trim();
+      if (!msg) {
+        signalLinkAlertEl.style.display = 'none';
+        signalLinkAlertEl.textContent = '';
+        return;
+      }
+      signalLinkAlertEl.textContent = msg;
+      signalLinkAlertEl.style.display = 'block';
+    }
+
+    function setFlowStatusFor(inputKind, kind, text) {
+      const el = inputKind === 'target'
+        ? document.getElementById('flowTargetStatus')
+        : document.getElementById('flowSourcesStatus');
+      if (!el) return;
+      const msg = String(text || '').trim();
+      if (!msg) {
+        el.textContent = '';
+        el.classList.remove('error');
+        return;
+      }
+      el.textContent = msg;
+      if (kind === 'error') el.classList.add('error');
+      else el.classList.remove('error');
+    }
+
+    function platformLoadingMessage(platform) {
+      if (platform === 'signal') return 'Завантаження чатів Signal... Це може тривати до 1-2 хв.';
+      if (platform === 'whatsapp') return 'Завантаження чатів WhatsApp...';
+      return '';
+    }
+
+    function stopSignalLinkWatch() {
+      if (signalLinkWatchTimer) {
+        clearInterval(signalLinkWatchTimer);
+        signalLinkWatchTimer = null;
+      }
+      signalLinkWatchStartTs = 0;
+      signalLinkWatchRequestInFlight = false;
+    }
+
+    function startSignalLinkWatch() {
+      stopSignalLinkWatch();
+      signalLinkWatchStartTs = Date.now();
+      signalLinkWatchTimer = setInterval(async () => {
+        if (signalLinkWatchRequestInFlight) return;
+        signalLinkWatchRequestInFlight = true;
+        try {
+          const res = await fetch('/api/signal/linked-check', { credentials: 'same-origin' });
+          if (res.status === 401) {
+            window.location.href = '/login.html';
+            return;
+          }
+          const payload = await res.json();
+          const s = payload?.signal || {};
+          const linked = s?.linked === true;
+          if (linked) {
+            setSignalLinkAlert('');
+            appendSignalConsoleLine('Signal link: linked=true');
+            stopSignalLinkWatch();
+            return;
+          }
+          const elapsed = Date.now() - signalLinkWatchStartTs;
+          if (elapsed >= 45000 && s?.linked === false) {
+            setSignalLinkAlert(
+              "Лінкування не завершилось за 45 секунд: у Signal на телефоні відкрийте 'Linked devices', підтвердіть підключення та згенеруйте новий QR."
+            );
+            stopSignalLinkWatch();
+          }
+        } catch {
+          // ignore transient fetch errors during watch
+        } finally {
+          signalLinkWatchRequestInFlight = false;
+        }
+      }, 8000);
+    }
+
     function renderState(s) {
       setText('statusBadge', s.status);
       setText('authenticated', s.authenticated);
@@ -788,13 +1052,62 @@
         setText('panelTargetEnv', p.targetChatDefault || '—');
       }
       const sig = s.signal || {};
+      lastStateSnapshot = s;
+      const act = s.activity || {};
+      const lm = act.lastMinute || {};
       setText('signalEnabled', sig.enabled);
       setText('signalRunning', sig.running);
       setText('signalLastPollAt', sig.lastPollAt);
       setText('signalLastError', sig.lastError);
       setText('signalRunning2', sig.running);
+      setText('signalLinked', sig.linked === null || sig.linked === undefined ? '—' : sig.linked);
       setText('signalLastPollAt2', sig.lastPollAt);
+      setText('signalLastLinkedCheckAt', sig.lastLinkedCheckAt);
       setText('signalLastError2', sig.lastError);
+      setText('signalLastLinkAt', sig.lastLinkAt);
+      setText('signalLastLinkError', sig.lastLinkError);
+      const signalLoginBtn = document.getElementById('signalLoginBtn');
+      if (signalLoginBtn) {
+        if (sig.linked === true) {
+          signalLoginBtn.textContent = 'Перелінкувати';
+          signalLoginBtn.title = 'Акаунт уже підключено. Створити новий QR для перелінкування';
+        } else {
+          signalLoginBtn.textContent = 'Увійти (QR)';
+          signalLoginBtn.title = 'Згенеруєте новий link та QR для підключення пристрою в Signal';
+        }
+      }
+      const ssb = document.getElementById('signalStatusBadge');
+      if (ssb) {
+        if (sig.linked === true) {
+          ssb.textContent = 'connected';
+          ssb.style.background = 'rgba(34, 197, 94, 0.2)';
+          ssb.style.color = '#86efac';
+        } else if (sig.linked === false) {
+          ssb.textContent = 'not linked';
+          ssb.style.background = 'rgba(239, 68, 68, 0.2)';
+          ssb.style.color = '#fecaca';
+        } else {
+          ssb.textContent = 'checking';
+          ssb.style.background = '#334155';
+          ssb.style.color = '#e2e8f0';
+        }
+      }
+      if (sig.linked === true) {
+        setSignalLinkAlert('');
+        stopSignalLinkWatch();
+      } else if (sig.lastLinkError) {
+        setSignalLinkAlert('Bridge /link помилка: ' + sig.lastLinkError);
+      }
+      const signalQrEl = document.getElementById('signalQr');
+      if (signalQrEl) {
+        if (sig.qrDataUrl) {
+          signalQrEl.src = sig.qrDataUrl;
+          signalQrEl.style.display = 'block';
+        } else if (sig.linked === true) {
+          signalQrEl.style.display = 'none';
+          signalQrEl.removeAttribute('src');
+        }
+      }
       const verEl = document.getElementById('appVersion');
       if (verEl && s.version) {
         const v = String(s.version).trim();
@@ -804,6 +1117,13 @@
       setText('clientWid', s.clientInfo?.wid);
       setText('clientPushname', s.clientInfo?.pushname);
       setText('clientPlatform', s.clientInfo?.platform);
+      setText('lastMinuteAt', act.lastMinuteAt);
+      setText('kpiReceived', Number(lm.received || 0));
+      setText('kpiAccepted', Number(lm.accepted || 0));
+      setText('kpiIgnored', Number(lm.ignored || 0));
+      setText('kpiPosted', Number(lm.posted || 0));
+      setText('kpiSent', Number(lm.sent || 0));
+      setText('kpiErrors', Number(lm.errors || 0));
 
       const fc = document.getElementById('flowCount');
       if (fc) fc.textContent = (s.flows && s.flows.length) ? s.flows.length : '0';
@@ -827,7 +1147,11 @@
       }
 
       cachedFlowsSnapshot = s.flows || [];
+      rememberFlowChatRefs(cachedFlowsSnapshot);
       renderFlowList(cachedFlowsSnapshot);
+      if (!backgroundWarmupStarted && (s?.signal?.enabled || s?.ready)) {
+        warmChatsInBackground().catch(() => {});
+      }
     }
 
     function platformLabel(p) {
@@ -849,7 +1173,8 @@
         return `Ціль: ${escapeHtml(tid)}${extra}`;
       }
       if ((f.targetPlatform || '') === 'signal') {
-        return `Ціль: ${escapeHtml(f.targetChatId || '—')} (Signal)`;
+        const tid = f.targetChatId ? chatLabelById(f.targetChatId) : '—';
+        return `Ціль: ${escapeHtml(tid)} (Signal)`;
       }
       return 'FastAPI: з .env · Відповіді actions → TARGET_CHAT з .env';
     }
@@ -860,12 +1185,44 @@
       return [];
     }
 
+    function rememberFlowChatRefs(flows) {
+      const isTechnicalLabel = (id, name) => {
+        const chatId = String(id || '').trim();
+        const label = String(name || '').trim();
+        if (!label) return true;
+        if (label === chatId) return true;
+        if (label.startsWith('group.')) return true;
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(label)) return true;
+        return false;
+      };
+      const next = {};
+      for (const f of (flows || [])) {
+        if (Array.isArray(f.sourceChatRefs)) {
+          for (const r of f.sourceChatRefs) {
+            const id = String(r?.id || '').trim();
+            if (!id) continue;
+            const name = String(r?.name || '').trim();
+            if (name && !isTechnicalLabel(id, name)) next[id] = name;
+          }
+        }
+        if (f?.targetChatRef?.id) {
+          const id = String(f.targetChatRef.id || '').trim();
+          const name = String(f.targetChatRef.name || '').trim();
+          if (id && name && !isTechnicalLabel(id, name)) next[id] = name;
+        }
+      }
+      flowChatRefsById = next;
+    }
+
     function chatLabelById(chatId) {
+      if (flowChatRefsById[chatId]) return flowChatRefsById[chatId];
       const c =
         chatsCacheByPlatform.whatsapp.find((x) => x.id === chatId) ||
         chatsCacheByPlatform.signal.find((x) => x.id === chatId);
       if (c && c.name) return c.name;
-      return chatId;
+      const v = String(chatId || '').trim();
+      const looksTechnical = v.startsWith('group.') || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v) || v.length > 48;
+      return looksTechnical ? 'Невідомий чат' : v;
     }
 
     function splitFilterTokensClient(s) {
@@ -900,11 +1257,11 @@
         .map((id) => {
           const label = escapeHtml(chatLabelById(id));
           if (showIds) {
-            return `${label}<br/><code style="font-size:11px;opacity:.88">${escapeHtml(id)}</code>`;
+            return `${label} <code style="font-size:11px;opacity:.88">(${escapeHtml(id)})</code>`;
           }
           return label;
         })
-        .join('<br/>');
+        .join(', ');
     }
 
     function renderFlowList(flows) {
@@ -975,9 +1332,20 @@
 
     async function signalLoginQr() {
       if (signalConsoleEl) signalConsoleEl.textContent = '';
+      setSignalLinkAlert('');
       appendSignalConsoleLine('Signal link: start request');
+      const linked = Boolean(lastStateSnapshot?.signal?.linked);
+      if (linked) {
+        const ok = confirm('Signal вже підключений. Згенерувати новий QR для перелінкування?');
+        if (!ok) {
+          appendSignalConsoleLine('Signal link: skipped (already linked)');
+          return;
+        }
+      }
       const btn = document.getElementById('signalLoginBtn');
+      const refreshBtn = document.getElementById('signalRefreshBtn');
       if (btn) btn.disabled = true;
+      if (refreshBtn) refreshBtn.disabled = true;
       try {
         const res = await fetch('/api/signal/link', {
           method: 'POST',
@@ -996,6 +1364,7 @@
         if (data.message) appendSignalConsoleLine('Signal link: message=' + data.message);
         if (!data.ok) {
           alert(data.message || 'Не вдалося згенерувати QR для Signal');
+          setSignalLinkAlert(data.message || 'Не вдалося згенерувати QR для Signal');
           return;
         }
         const img = document.getElementById('signalQr');
@@ -1003,12 +1372,16 @@
         img.src = data.qrDataUrl;
         img.style.display = 'block';
         appendSignalConsoleLine('Signal link: QR shown');
+        startSignalLinkWatch();
       } catch (e) {
         appendSignalConsoleLine('Signal link: exception ' + (e?.message || String(e)));
+        setSignalLinkAlert(e?.message || 'Помилка при генерації QR для Signal');
         alert(e?.message || 'Помилка при генерації QR для Signal');
       } finally {
         const btn2 = document.getElementById('signalLoginBtn');
+        const refreshBtn2 = document.getElementById('signalRefreshBtn');
         if (btn2) btn2.disabled = false;
+        if (refreshBtn2) refreshBtn2.disabled = false;
       }
     }
 
@@ -1049,49 +1422,111 @@
 
     async function loadChatsForPlatform(platform) {
       const onlyGroups = getShowOnlyGroups() ? '1' : '0';
-      const res = await fetch('/api/chats?platform=' + encodeURIComponent(platform) + '&only_groups=' + onlyGroups, { credentials: 'same-origin' });
-      if (res.status === 401) {
-        window.location.href = '/login.html';
-        return [];
+      const endpoint = '/api/chats?platform=' + encodeURIComponent(platform) + '&only_groups=' + onlyGroups;
+      const maxAttempts = platform === 'signal' ? 2 : 1;
+      const timeoutMs = platform === 'signal' ? 120000 : 30000;
+      let lastErr = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const ctl = new AbortController();
+        const t = setTimeout(() => ctl.abort(), timeoutMs);
+        try {
+          const res = await fetch(endpoint, { credentials: 'same-origin', signal: ctl.signal });
+          clearTimeout(t);
+          if (res.status === 401) {
+            window.location.href = '/login.html';
+            return [];
+          }
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error(data.message || 'Не вдалося отримати чати');
+          }
+          return data.chats || [];
+        } catch (e) {
+          clearTimeout(t);
+          lastErr = e;
+          if (attempt < maxAttempts) {
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        }
       }
-      const data = await res.json();
-      if (!data.ok) {
-        alert(data.message || 'Не вдалося отримати чати');
-        return [];
-      }
-      return data.chats || [];
+      throw lastErr || new Error('Не вдалося отримати чати');
     }
 
-    async function loadChats() {
-      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
-      const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
-      chatsCacheByPlatform[src] = await loadChatsForPlatform(src);
-      if (tgt !== 'fastapi') {
-        chatsCacheByPlatform[tgt] = await loadChatsForPlatform(tgt);
+    async function ensureChatsLoaded(platform, force = false) {
+      const now = Date.now();
+      const cached = chatsCacheByPlatform[platform] || [];
+      const ts = Number(chatsCacheAtByPlatform[platform] || 0);
+      if (!force && cached.length > 0 && now - ts < CHATS_CACHE_TTL_MS) {
+        return cached;
       }
-      fillSourcesMulti();
-      fillTargetSingle();
+      const list = await loadChatsForPlatform(platform);
+      chatsCacheByPlatform[platform] = list;
+      chatsCacheAtByPlatform[platform] = Date.now();
+      return list;
+    }
+
+    async function warmChatsInBackground() {
+      if (backgroundWarmupStarted) return;
+      backgroundWarmupStarted = true;
+      const jobs = [];
+      jobs.push(ensureChatsLoaded('signal', false).catch(() => []));
+      if (lastStateSnapshot?.ready) {
+        jobs.push(ensureChatsLoaded('whatsapp', false).catch(() => []));
+      }
+      await Promise.all(jobs);
       renderFlowList(cachedFlowsSnapshot);
     }
 
-    function fillTargetSingle() {
-      const sel = document.getElementById('flowTarget');
-      if (!sel) return;
-      const selected = sel.value;
-      const showIds = getShowChatIds();
-      const tgt = document.getElementById('flowTargetPlatform')?.value || 'whatsapp';
-      const emptyLabel = tgt === 'signal' ? '— Оберіть Signal чат —' : '— Оберіть WhatsApp чат —';
-      sel.innerHTML = `<option value="">${emptyLabel}</option>`;
-      const list = chatsCacheByPlatform[tgt] || [];
-      for (const c of list) {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
-        sel.appendChild(o);
+    async function loadChats(force = false) {
+      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
+      setFlowStatusFor('source', '', '');
+      setFlowStatusFor('target', '', '');
+      setFlowStatusFor('source', 'info', platformLoadingMessage(src));
+      if (tgt !== 'fastapi') {
+        setFlowStatusFor('target', 'info', platformLoadingMessage(tgt));
       }
-      if (selected && Array.from(sel.options).some((opt) => opt.value === selected)) {
-        sel.value = selected;
+      try {
+        await ensureChatsLoaded(src, force);
+        if (tgt !== 'fastapi') {
+          await ensureChatsLoaded(tgt, force);
+        }
+        setFlowStatusFor('source', '', '');
+        setFlowStatusFor('target', '', '');
+      } catch (e) {
+        const msg = e?.name === 'AbortError'
+          ? 'Таймаут завантаження чатів. Натисніть "Оновити" ще раз.'
+          : (e?.message || 'Не вдалося отримати чати');
+        setFlowStatusFor('source', 'error', msg);
+        if (tgt !== 'fastapi') setFlowStatusFor('target', 'error', msg);
+        alert(msg);
       }
+      renderSourcePicker();
+      renderTargetPicker();
+      renderFlowList(cachedFlowsSnapshot);
+    }
+
+    function getFilteredChats(platform, query) {
+      const q = String(query || '').trim().toLowerCase();
+      const list = chatsCacheByPlatform[platform] || [];
+      let merged = list.slice();
+      if (platform === 'signal') {
+        const recent = Array.isArray(lastStateSnapshot?.signal?.recentIncomingChats)
+          ? lastStateSnapshot.signal.recentIncomingChats
+          : [];
+        for (const r of recent) {
+          const id = String(r?.id || '').trim();
+          if (!id) continue;
+          if (merged.some((x) => x.id === id)) continue;
+          const rawName = String(r?.name || '').trim();
+          const name = rawName && rawName !== id ? rawName : `Нещодавній чат (${id.slice(0, 10)}...)`;
+          merged.unshift({ id, name });
+        }
+      }
+      if (!q) return merged.slice(0, 200);
+      return merged
+        .filter((c) => ((c.name || '') + ' ' + (c.id || '')).toLowerCase().includes(q))
+        .slice(0, 200);
     }
 
     function toggleFlowDirectionUi() {
@@ -1110,21 +1545,84 @@
       if (hWa) hWa.style.display = tgt === 'fastapi' ? 'none' : 'block';
     }
 
-    function fillSourcesMulti() {
+    function syncSourceHiddenSelect() {
       const sel = document.getElementById('flowSources');
       if (!sel) return;
-      const selected = new Set(Array.from(sel.selectedOptions).map((o) => o.value));
-      const showIds = getShowChatIds();
       sel.innerHTML = '';
-      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
-      const list = chatsCacheByPlatform[src] || [];
-      for (const c of list) {
+      for (const id of flowSelectedSourceIds) {
         const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = showIds ? c.name + ' · ' + c.id : c.name;
-        if (selected.has(c.id)) o.selected = true;
+        o.value = id;
+        o.selected = true;
+        o.textContent = chatLabelById(id);
         sel.appendChild(o);
       }
+    }
+
+    function renderSourcePicker() {
+      const box = document.getElementById('flowSourcesSelected');
+      const dd = document.getElementById('flowSourcesDropdown');
+      const search = document.getElementById('flowSourcesSearch');
+      if (!box || !dd || !search) return;
+      const showIds = getShowChatIds();
+      const query = String(search.value || '').trim();
+      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      const list = getFilteredChats(src, query);
+      box.innerHTML = Array.from(flowSelectedSourceIds || [])
+        .map((id) => {
+          const label = escapeHtml(chatLabelById(id));
+          return `<span class="chip">${label}<button type="button" data-chip-id="${encodeURIComponent(id)}" aria-label="Прибрати">×</button></span>`;
+        })
+        .join('');
+      dd.innerHTML = list
+        .map((c) => {
+          const label = showIds ? `${c.name} · ${c.id}` : c.name;
+          const selected = flowSelectedSourceIds.has(c.id) ? ' selected' : '';
+          return `<div class="chat-option${selected}" data-source-id="${encodeURIComponent(c.id)}">${escapeHtml(label)}</div>`;
+        })
+        .join('');
+      syncSourceHiddenSelect();
+    }
+
+    function syncTargetHiddenSelect() {
+      const sel = document.getElementById('flowTarget');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— Оберіть чат —</option>';
+      if (flowTargetChatId) {
+        const o = document.createElement('option');
+        o.value = flowTargetChatId;
+        o.selected = true;
+        o.textContent = chatLabelById(flowTargetChatId);
+        sel.appendChild(o);
+      }
+    }
+
+    function renderTargetPicker() {
+      const box = document.getElementById('flowTargetSelected');
+      const dd = document.getElementById('flowTargetDropdown');
+      const search = document.getElementById('flowTargetSearch');
+      if (!box || !dd || !search) return;
+      const showIds = getShowChatIds();
+      const tgt = document.getElementById('flowTargetPlatform')?.value || 'whatsapp';
+      if (tgt === 'fastapi') {
+        box.innerHTML = '';
+        dd.innerHTML = '';
+        flowTargetChatId = '';
+        syncTargetHiddenSelect();
+        return;
+      }
+      const query = String(search.value || '').trim();
+      const list = getFilteredChats(tgt, query);
+      box.innerHTML = flowTargetChatId
+        ? `<span class="chip">${escapeHtml(chatLabelById(flowTargetChatId))}<button type="button" data-target-chip="1" aria-label="Очистити">×</button></span>`
+        : '';
+      dd.innerHTML = list
+        .map((c) => {
+        const label = showIds ? c.name + ' · ' + c.id : c.name;
+          const selected = c.id === flowTargetChatId ? ' selected' : '';
+          return `<div class="chat-option${selected}" data-target-id="${encodeURIComponent(c.id)}">${escapeHtml(label)}</div>`;
+        })
+        .join('');
+      syncTargetHiddenSelect();
     }
 
     function openFlowModal(flow) {
@@ -1133,39 +1631,23 @@
       document.getElementById('flowName').value = flow ? flow.name : '';
       document.getElementById('flowKeywords').value = flow ? (flow.keywords || '') : '';
       document.getElementById('flowFrequencies').value = flow ? (flow.frequencies || '') : '';
+      if (flow) {
+        rememberFlowChatRefs([flow]);
+      }
       const srcSel = document.getElementById('flowSourcePlatform');
       const tgtSel = document.getElementById('flowTargetPlatform');
       if (srcSel) srcSel.value = flow ? (flow.sourcePlatform || 'whatsapp') : 'whatsapp';
       if (tgtSel) tgtSel.value = flow ? (flow.targetPlatform || (flow.direction === 'wa_wa' ? 'whatsapp' : 'fastapi')) : 'fastapi';
       const sendAtt = document.getElementById('flowSendAttachments');
       if (sendAtt) sendAtt.checked = flow ? Boolean(flow.sendAttachments) : false;
+      flowSelectedSourceIds = new Set(flow ? sourceList(flow) : []);
+      flowTargetChatId = flow?.targetChatId || '';
       toggleFlowDirectionUi();
+      renderSourcePicker();
+      renderTargetPicker();
       loadChats().then(() => {
-        const sel = document.getElementById('flowSources');
-        Array.from(sel.options).forEach((o) => {
-          o.selected = false;
-        });
-        if (flow) {
-          const ids = sourceList(flow);
-          ids.forEach((id) => {
-            const o = Array.from(sel.options).find((x) => x.value === id);
-            if (o) o.selected = true;
-          });
-        }
-        const tgt = document.getElementById('flowTarget');
-        if (tgt) {
-          if (flow && flow.targetChatId) {
-            if (!Array.from(tgt.options).some((o) => o.value === flow.targetChatId)) {
-              const o = document.createElement('option');
-              o.value = flow.targetChatId;
-              o.textContent = chatLabelById(flow.targetChatId);
-              tgt.appendChild(o);
-            }
-            tgt.value = flow.targetChatId;
-          } else {
-            tgt.value = '';
-          }
-        }
+        renderSourcePicker();
+        renderTargetPicker();
       });
       document.getElementById('flowModal').classList.add('open');
     }
@@ -1180,16 +1662,14 @@
       const sourcePlatform = document.getElementById('flowSourcePlatform').value;
       const targetPlatform = document.getElementById('flowTargetPlatform').value;
       const sel = document.getElementById('flowSources');
-      const sourceChatIds = Array.from(sel.selectedOptions)
-        .map((o) => o.value)
-        .filter(Boolean);
+      const sourceChatIds = Array.from(flowSelectedSourceIds || []);
       if (sourceChatIds.length === 0) {
         alert('Оберіть хоча б один чат-джерело.');
         return;
       }
       let targetChatId = null;
       if (targetPlatform === 'whatsapp' || targetPlatform === 'signal') {
-        targetChatId = document.getElementById('flowTarget').value;
+        targetChatId = String(flowTargetChatId || '').trim();
         if (!targetChatId) {
           alert('Оберіть цільовий чат.');
           return;
@@ -1198,13 +1678,15 @@
       const body = {
         name: document.getElementById('flowName').value.trim(),
         sourceChatIds,
+        sourceChatRefs: sourceChatIds.map((id) => ({ id, name: chatLabelById(id) })),
         sourcePlatform,
         targetPlatform,
         keywords: document.getElementById('flowKeywords').value,
         frequencies: document.getElementById('flowFrequencies').value,
         sendAttachments: document.getElementById('flowSendAttachments').checked,
         fastapiUrl: null,
-        targetChatId
+        targetChatId,
+        targetChatRef: targetChatId ? { id: targetChatId, name: chatLabelById(targetChatId) } : null
       };
       const url = id ? '/api/flows/' + encodeURIComponent(id) : '/api/flows';
       const method = id ? 'PUT' : 'POST';
@@ -1320,6 +1802,50 @@
     }
 
     async function initialLoad() {
+      async function submitSecuritySettings(ev) {
+        ev.preventDefault();
+        const user = String(document.getElementById('securityUser')?.value || '').trim();
+        const password = String(document.getElementById('securityPassword')?.value || '');
+        const statusEl = document.getElementById('securityStatus');
+        if ((user && !password) || (!user && password)) {
+          if (statusEl) {
+            statusEl.textContent = 'Заповніть обидва поля (логін і пароль), або залиште обидва порожніми.';
+            statusEl.classList.add('error');
+          }
+          return;
+        }
+        const res = await fetch('/api/panel-auth/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ user, password })
+        });
+        if (res.status === 401) {
+          const data = await res.json().catch(() => ({}));
+          const msg = data?.message || 'Потрібен вхід у панель або невірний поточний пароль.';
+          if (statusEl) {
+            statusEl.textContent = msg;
+            statusEl.classList.add('error');
+          }
+          return;
+        }
+        const data = await res.json();
+        if (!data.ok) {
+          if (statusEl) {
+            statusEl.textContent = data.message || 'Не вдалося зберегти налаштування безпеки.';
+            statusEl.classList.add('error');
+          }
+          return;
+        }
+        if (statusEl) {
+          statusEl.textContent = data.authDisabled
+            ? 'Захист вимкнено. Вхід у панель без логіна/пароля.'
+            : `Збережено. Новий логін: ${data.user}`;
+          statusEl.classList.remove('error');
+        }
+        document.getElementById('securityPassword').value = '';
+      }
+
       const res = await fetch('/api/state', { credentials: 'same-origin' });
       if (res.status === 401) {
         window.location.href = '/login.html';
@@ -1332,8 +1858,8 @@
         idsToggle.checked = getShowChatIds();
         idsToggle.onchange = () => {
           setShowChatIds(idsToggle.checked);
-          fillSourcesMulti();
-          fillTargetSingle();
+          renderSourcePicker();
+          renderTargetPicker();
           renderFlowList(cachedFlowsSnapshot);
         };
       }
@@ -1345,27 +1871,108 @@
           await loadChats();
         };
       }
+      const meRes = await fetch('/api/panel-auth/me', { credentials: 'same-origin' });
+      if (meRes.status !== 401) {
+        const me = await meRes.json().catch(() => null);
+        const userEl = document.getElementById('securityUser');
+        if (userEl && me?.user) userEl.value = String(me.user);
+      }
+      const securityForm = document.getElementById('securityForm');
+      if (securityForm && !securityForm.dataset.bound) {
+        securityForm.dataset.bound = '1';
+        securityForm.addEventListener('submit', submitSecuritySettings);
+      }
       const sourceSel = document.getElementById('flowSourcePlatform');
       const targetSel = document.getElementById('flowTargetPlatform');
+      const sourceSearch = document.getElementById('flowSourcesSearch');
+      const targetSearch = document.getElementById('flowTargetSearch');
       if (sourceSel) {
         sourceSel.addEventListener('change', async () => {
+          flowSelectedSourceIds = new Set();
           toggleFlowDirectionUi();
-          await loadChats();
+          await loadChats(false);
         });
       }
       if (targetSel) {
         targetSel.addEventListener('change', async () => {
+          flowTargetChatId = '';
           toggleFlowDirectionUi();
-          await loadChats();
+          await loadChats(false);
         });
       }
-      if (state.ready) {
-        try {
-          await loadChats();
-        } catch {
-          /* ignore */
-        }
+      if (sourceSearch) {
+        sourceSearch.addEventListener('input', () => {
+          renderSourcePicker();
+        });
+        sourceSearch.addEventListener('focus', () => {
+          document.getElementById('flowSourcesDropdown')?.classList.add('open');
+        });
       }
+      if (targetSearch) {
+        targetSearch.addEventListener('input', () => {
+          renderTargetPicker();
+        });
+        targetSearch.addEventListener('focus', () => {
+          document.getElementById('flowTargetDropdown')?.classList.add('open');
+        });
+      }
+      const chipsBox = document.getElementById('flowSourcesSelected');
+      if (chipsBox && !chipsBox.dataset.bound) {
+        chipsBox.dataset.bound = '1';
+        chipsBox.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-chip-id]');
+          if (!btn) return;
+          const id = decodeURIComponent(btn.getAttribute('data-chip-id') || '');
+          if (!id) return;
+          flowSelectedSourceIds.delete(id);
+          renderSourcePicker();
+        });
+      }
+      const targetChips = document.getElementById('flowTargetSelected');
+      if (targetChips && !targetChips.dataset.bound) {
+        targetChips.dataset.bound = '1';
+        targetChips.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-target-chip]');
+          if (!btn) return;
+          flowTargetChatId = '';
+          renderTargetPicker();
+        });
+      }
+      const sourcesDropdown = document.getElementById('flowSourcesDropdown');
+      if (sourcesDropdown && !sourcesDropdown.dataset.bound) {
+        sourcesDropdown.dataset.bound = '1';
+        sourcesDropdown.addEventListener('click', (e) => {
+          const item = e.target.closest('.chat-option[data-source-id]');
+          if (!item) return;
+          const id = decodeURIComponent(item.getAttribute('data-source-id') || '');
+          if (!id) return;
+          if (flowSelectedSourceIds.has(id)) flowSelectedSourceIds.delete(id);
+          else flowSelectedSourceIds.add(id);
+          renderSourcePicker();
+        });
+      }
+      const targetDropdown = document.getElementById('flowTargetDropdown');
+      if (targetDropdown && !targetDropdown.dataset.bound) {
+        targetDropdown.dataset.bound = '1';
+        targetDropdown.addEventListener('click', (e) => {
+          const item = e.target.closest('.chat-option[data-target-id]');
+          if (!item) return;
+          const id = decodeURIComponent(item.getAttribute('data-target-id') || '');
+          flowTargetChatId = id || '';
+          renderTargetPicker();
+        });
+      }
+      document.addEventListener('click', (e) => {
+        const srcPicker = document.getElementById('flowSourcesPicker');
+        const tgtPicker = document.getElementById('flowTargetPicker');
+        if (srcPicker && !srcPicker.contains(e.target)) {
+          document.getElementById('flowSourcesDropdown')?.classList.remove('open');
+        }
+        if (tgtPicker && !tgtPicker.contains(e.target)) {
+          document.getElementById('flowTargetDropdown')?.classList.remove('open');
+        }
+      });
+      warmChatsInBackground().catch(() => {});
       const logsRes = await fetch('/api/logs', { credentials: 'same-origin' });
       if (logsRes.status === 401) {
         window.location.href = '/login.html';
