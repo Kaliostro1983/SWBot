@@ -1000,6 +1000,8 @@
 
     let waStatusKnown = false;
     let signalStatusKnown = false;
+    let waConnectUiInProgress = false;
+    let signalLinkUiInProgress = false;
 
     function renderState(s) {
       // Simplified Integration UI
@@ -1017,8 +1019,10 @@
         const phone = wid && wid.includes('@') ? wid.split('@')[0] : wid;
         waConnMeta.textContent = waConnected && phone ? `Акаунт: +${String(phone).replace(/\D/g, '')}` : '—';
       }
-      if (waConnProgress) waConnProgress.style.display = 'none';
-      if (waConnectToolbar) waConnectToolbar.style.display = waConnected ? 'none' : 'flex';
+      if (!waConnectUiInProgress) {
+        if (waConnProgress) waConnProgress.style.display = 'none';
+        if (waConnectToolbar) waConnectToolbar.style.display = waConnected ? 'none' : 'flex';
+      }
       waStatusKnown = true;
 
       const sig = s.signal || {};
@@ -1036,14 +1040,17 @@
         const acc = Array.isArray(sig.linkedAccounts) && sig.linkedAccounts.length ? String(sig.linkedAccounts[0]) : '';
         signalConnMeta.textContent = signalConnected && acc ? `Акаунт: ${acc}` : '—';
       }
-      if (signalConnProgress) signalConnProgress.style.display = 'none';
-      if (signalConnectToolbar) signalConnectToolbar.style.display = signalConnected ? 'none' : 'flex';
+      if (!signalLinkUiInProgress) {
+        if (signalConnProgress) signalConnProgress.style.display = 'none';
+        if (signalConnectToolbar) signalConnectToolbar.style.display = signalConnected ? 'none' : 'flex';
+      }
       signalStatusKnown = true;
 
       if (sig.linked === true) {
+        signalLinkUiInProgress = false;
         setSignalLinkAlert('');
         stopSignalLinkWatch();
-      } else if (sig.lastLinkError) {
+      } else if (sig.lastLinkError && !signalLinkUiInProgress) {
         setSignalLinkAlert('Bridge /link помилка: ' + sig.lastLinkError);
       }
       const signalQrEl = document.getElementById('signalQr');
@@ -1247,9 +1254,11 @@
       if (toolbar) toolbar.style.display = 'none';
       if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Підключення…</span>'; progress.style.display = 'flex'; }
       if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
+      waConnectUiInProgress = true;
       try {
         await callApi('/api/login');
       } finally {
+        waConnectUiInProgress = false;
         if (progress) progress.style.display = 'none';
         if (toolbar) toolbar.style.display = 'flex';
       }
@@ -1288,6 +1297,7 @@
       if (toolbar) toolbar.style.display = 'none';
       if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Генерація QR…</span>'; progress.style.display = 'flex'; }
       if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
+      signalLinkUiInProgress = true;
       const btn = document.getElementById('signalLoginBtn');
       const refreshBtn = document.getElementById('signalRefreshBtn');
       if (btn) btn.disabled = true;
@@ -1309,12 +1319,14 @@
         if (data.uri) appendSignalConsoleLine('Signal link: uri_len=' + String(data.uri).length);
         if (data.message) appendSignalConsoleLine('Signal link: message=' + data.message);
         if (!data.ok) {
+          signalLinkUiInProgress = false;
           setSignalLinkAlert(data.message || 'Не вдалося згенерувати QR для Signal');
           if (progress) progress.style.display = 'none';
           if (toolbar) toolbar.style.display = 'flex';
           if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
           return;
         }
+        // QR generated — keep signalLinkUiInProgress=true until scan completes (startSignalLinkWatch handles it)
         if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Очікування сканування QR…</span>'; }
         const img = document.getElementById('signalQr');
         if (!img) return;
@@ -1323,6 +1335,7 @@
         appendSignalConsoleLine('Signal link: QR shown');
         startSignalLinkWatch();
       } catch (e) {
+        signalLinkUiInProgress = false;
         appendSignalConsoleLine('Signal link: exception ' + (e?.message || String(e)));
         setSignalLinkAlert(e?.message || 'Помилка при генерації QR для Signal');
         if (progress) progress.style.display = 'none';
