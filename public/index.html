@@ -490,6 +490,28 @@
       line-height: 1.45;
       display: none;
     }
+    .conn-status.status-connected { color: #4ade80; }
+    .conn-status.status-not-connected { color: #f87171; }
+    .conn-status.status-checking { color: var(--muted); }
+    .conn-spinner {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid #334155;
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: connSpin 0.7s linear infinite;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .conn-progress {
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    @keyframes connSpin { to { transform: rotate(360deg); } }
     .inline-note {
       margin-top: 8px;
       font-size: 12px;
@@ -617,38 +639,44 @@
           <div class="card">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
               <div>
-                <h2 style="margin:0 0 6px;">WhatsApp <span id="waConnStatus" style="font-size:12px;color:var(--muted);font-weight:700;">—</span></h2>
+                <h2 style="margin:0 0 6px;">WhatsApp <span id="waConnStatus" class="conn-status status-checking">—</span></h2>
                 <p class="sub" id="waConnMeta" style="margin:0;">—</p>
               </div>
               <div class="flow-actions" style="margin-top:0;">
-                <button type="button" class="icon-btn" title="Вийти з акаунта" onclick="callApi('/api/logout')">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                <button type="button" class="icon-btn" title="Вийти з акаунта WhatsApp" onclick="callApi('/api/logout')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>
-                <button type="button" class="icon-btn danger" title="Скинути сесію" onclick="resetSession()">
+                <button type="button" class="icon-btn danger" title="Скинути сесію та відсканувати QR знову" onclick="resetSession()">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 </button>
               </div>
             </div>
-            <div class="toolbar" style="margin-top:14px;margin-bottom:0;">
-              <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="callApi('/api/login')">Зʼєднатися</button>
+            <div id="waConnProgress" class="conn-progress">
+              <span class="conn-spinner"></span><span>Перевірка підключення…</span>
+            </div>
+            <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waConnectToolbar">
+              <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="waConnect()">Зʼєднатися</button>
             </div>
           </div>
           <div class="card">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
               <div>
-                <h2 style="margin:0 0 6px;">Signal <span id="signalConnStatus" style="font-size:12px;color:var(--muted);font-weight:700;">—</span></h2>
+                <h2 style="margin:0 0 6px;">Signal <span id="signalConnStatus" class="conn-status status-checking">—</span></h2>
                 <p class="sub" id="signalConnMeta" style="margin:0;">—</p>
               </div>
               <div class="flow-actions" style="margin-top:0;">
-                <button type="button" class="icon-btn" title="Вийти/перелінкувати" onclick="signalLoginQr()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <button type="button" class="icon-btn" title="Оновити QR / Перелінкувати" onclick="signalLoginQr()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
                 </button>
-                <button type="button" class="icon-btn danger" title="Скинути/оновити QR" onclick="signalLoginQr()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                <button type="button" class="icon-btn danger" title="Відключити Signal" onclick="signalDisconnect()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>
               </div>
             </div>
-            <div class="toolbar" style="margin-top:14px;margin-bottom:0;">
+            <div id="signalConnProgress" class="conn-progress">
+              <span class="conn-spinner"></span><span>Перевірка підключення…</span>
+            </div>
+            <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="signalConnectToolbar">
               <button type="button" class="btn btn-accent" id="signalConnectBtn" onclick="signalLoginQr()">Зʼєднатися</button>
             </div>
             <div id="signalLinkAlert" class="signal-alert"></div>
@@ -970,32 +998,47 @@
       }, 8000);
     }
 
+    let waStatusKnown = false;
+    let signalStatusKnown = false;
+
     function renderState(s) {
       // Simplified Integration UI
       const waConnected = Boolean(s?.authenticated) && Boolean(s?.ready);
       const waConnStatus = document.getElementById('waConnStatus');
       const waConnMeta = document.getElementById('waConnMeta');
-      const waConnectBtn = document.getElementById('waConnectBtn');
-      if (waConnStatus) waConnStatus.textContent = waConnected ? 'connected' : 'not connected';
+      const waConnectToolbar = document.getElementById('waConnectToolbar');
+      const waConnProgress = document.getElementById('waConnProgress');
+      if (waConnStatus) {
+        waConnStatus.textContent = waConnected ? 'connected' : 'not connected';
+        waConnStatus.className = 'conn-status ' + (waConnected ? 'status-connected' : 'status-not-connected');
+      }
       if (waConnMeta) {
         const wid = String(s?.clientInfo?.wid || '').trim();
         const phone = wid && wid.includes('@') ? wid.split('@')[0] : wid;
         waConnMeta.textContent = waConnected && phone ? `Акаунт: +${String(phone).replace(/\D/g, '')}` : '—';
       }
-      if (waConnectBtn) waConnectBtn.style.display = waConnected ? 'none' : 'inline-flex';
+      if (waConnProgress) waConnProgress.style.display = 'none';
+      if (waConnectToolbar) waConnectToolbar.style.display = waConnected ? 'none' : 'flex';
+      waStatusKnown = true;
 
       const sig = s.signal || {};
       lastStateSnapshot = s;
       const signalConnected = sig.linked === true;
       const signalConnStatus = document.getElementById('signalConnStatus');
       const signalConnMeta = document.getElementById('signalConnMeta');
-      const signalConnectBtn = document.getElementById('signalConnectBtn');
-      if (signalConnStatus) signalConnStatus.textContent = signalConnected ? 'connected' : 'not connected';
+      const signalConnectToolbar = document.getElementById('signalConnectToolbar');
+      const signalConnProgress = document.getElementById('signalConnProgress');
+      if (signalConnStatus) {
+        signalConnStatus.textContent = signalConnected ? 'connected' : 'not connected';
+        signalConnStatus.className = 'conn-status ' + (signalConnected ? 'status-connected' : 'status-not-connected');
+      }
       if (signalConnMeta) {
         const acc = Array.isArray(sig.linkedAccounts) && sig.linkedAccounts.length ? String(sig.linkedAccounts[0]) : '';
         signalConnMeta.textContent = signalConnected && acc ? `Акаунт: ${acc}` : '—';
       }
-      if (signalConnectBtn) signalConnectBtn.style.display = signalConnected ? 'none' : 'inline-flex';
+      if (signalConnProgress) signalConnProgress.style.display = 'none';
+      if (signalConnectToolbar) signalConnectToolbar.style.display = signalConnected ? 'none' : 'flex';
+      signalStatusKnown = true;
 
       if (sig.linked === true) {
         setSignalLinkAlert('');
@@ -1197,6 +1240,26 @@
       if (!data.ok && data.message) alert(data.message);
     }
 
+    async function waConnect() {
+      const toolbar = document.getElementById('waConnectToolbar');
+      const progress = document.getElementById('waConnProgress');
+      const status = document.getElementById('waConnStatus');
+      if (toolbar) toolbar.style.display = 'none';
+      if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Підключення…</span>'; progress.style.display = 'flex'; }
+      if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
+      try {
+        await callApi('/api/login');
+      } finally {
+        if (progress) progress.style.display = 'none';
+        if (toolbar) toolbar.style.display = 'flex';
+      }
+    }
+
+    async function signalDisconnect() {
+      if (!confirm('Відключити Signal від bridge? Для повторного підключення потрібно буде відсканувати QR.')) return;
+      await callApi('/api/signal/logout');
+    }
+
     async function panelLogout() {
       await fetch('/api/panel-auth/logout', { method: 'POST', credentials: 'same-origin' });
       window.location.href = '/login.html';
@@ -1219,6 +1282,12 @@
           return;
         }
       }
+      const toolbar = document.getElementById('signalConnectToolbar');
+      const progress = document.getElementById('signalConnProgress');
+      const status = document.getElementById('signalConnStatus');
+      if (toolbar) toolbar.style.display = 'none';
+      if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Генерація QR…</span>'; progress.style.display = 'flex'; }
+      if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
       const btn = document.getElementById('signalLoginBtn');
       const refreshBtn = document.getElementById('signalRefreshBtn');
       if (btn) btn.disabled = true;
@@ -1240,10 +1309,13 @@
         if (data.uri) appendSignalConsoleLine('Signal link: uri_len=' + String(data.uri).length);
         if (data.message) appendSignalConsoleLine('Signal link: message=' + data.message);
         if (!data.ok) {
-          alert(data.message || 'Не вдалося згенерувати QR для Signal');
           setSignalLinkAlert(data.message || 'Не вдалося згенерувати QR для Signal');
+          if (progress) progress.style.display = 'none';
+          if (toolbar) toolbar.style.display = 'flex';
+          if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
           return;
         }
+        if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Очікування сканування QR…</span>'; }
         const img = document.getElementById('signalQr');
         if (!img) return;
         img.src = data.qrDataUrl;
@@ -1253,7 +1325,9 @@
       } catch (e) {
         appendSignalConsoleLine('Signal link: exception ' + (e?.message || String(e)));
         setSignalLinkAlert(e?.message || 'Помилка при генерації QR для Signal');
-        alert(e?.message || 'Помилка при генерації QR для Signal');
+        if (progress) progress.style.display = 'none';
+        if (toolbar) toolbar.style.display = 'flex';
+        if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
       } finally {
         const btn2 = document.getElementById('signalLoginBtn');
         const refreshBtn2 = document.getElementById('signalRefreshBtn');
