@@ -2,7 +2,7 @@
 
 Оновлено: 2026-03-24
 
-Поточна версія збірки: **1.0** (`VERSION`, узгоджено з `package.json` **1.0.0**).
+Поточна версія збірки: **1.5** (`VERSION`, узгоджено з `package.json` **1.5.0**).
 
 ## Що вже зроблено
 
@@ -31,6 +31,9 @@
 - Додано щохвилинний backend-дайджест активності (`Minute activity`) для контролю прогресу обробки повідомлень.
 - У конфігурації flow зберігаються `sourceChatRefs[]`/`targetChatRef` (`id + name`), тому в модалці редагування назви вибраних чатів показуються одразу без очікування повного завантаження списків.
 - Додатково виправлено UX модалки: вибрані чати рендеряться негайно при відкритті форми (до завершення `loadChats`), навіть коли Signal chat-list ще підтягується у фоні.
+- Для Signal chat refresh (`/api/signal/chats/refresh`) збільшено таймаут завантаження списку чатів через `SIGNAL_CHATS_TIMEOUT_MS` (default 90000), щоб уникати помилок `timeout of 30000ms exceeded` на повільному bridge.
+- У модалці створення/редагування automation після `Оновити` тепер показується явний підсумок (`Оновлення завершено: N чатів` / попередження про частковий успіх).
+- Додано діагностику резолву Signal chat id: `GET /api/chats/debug-resolve?platform=signal&chatKey=...` (показує aliases, нормалізовані ключі та результат зіставлення з `signal-chats-cache.json`).
 - У `Налаштування` додано блок `Безпека`: логін/пароль панелі можна змінювати з UI; нові креденшали зберігаються в `data/panel-auth.json` (пріоритет над `.env`).
 - Сервіс запускає інтеграції автоматично: `startBot()` стартує при піднятті сервера, а для Signal (коли не linked) автоматично генерується QR для перелінкування.
 - Додано персистентний кеш назв чатів (`data/chat-directory.json`) та фоновий prefetch чатів одразу після старту сервісу; automation UI будується з конфігурації без показу сирих довгих chat ID.
@@ -39,10 +42,13 @@
 - Стартова політика Signal переведена у безпечний режим: без автоперелінкування за замовчуванням, лише `linked`-перевірка з ретраями; новий QR запускається вручну.
 - Структуру Signal-джерел у flow посилено до dual-id/aliases: для `sourceChatRefs` зберігаються `aliases[]`, а маршрутизація порівнює вхідні `chatCandidates` з alias-набором, що знижує ризик `no_flow_match` після relink/зміни формату Signal ID.
 - Додано окремий Chat Directory layer (`src/chat-directory/chatDirectory.js`) із внутрішніми стабільними `chatKey` (`<platform>:chat:<id>`), щоб flow могли посилатися на чат не через сирі alias/UUID.
-- Маршрутизація підтримує `sourceChatKey`: коли ключ присутній, source-match іде через aliases запису в chat-directory; aliases-матчинг залишено як backward-compatible fallback для старих flow без `sourceChatKey`.
+- Маршрутизація підтримує `sourceChatKey`: коли ключ присутній, збіг — через `findChatByMessage` (кандидати з повідомлення) і порівняння `entry.chatKey === flow.sourceChatKey`; логи `[ROUTING] matched by sourceChatKey` / `sourceChatKey mismatch`. Якщо ключа немає — fallback на старий alias-матчинг.
 - Вхідні Signal/WhatsApp повідомлення тепер спочатку upsert-яться в chat-directory (оновлення `lastSeenAt`, `lastMessagePreview`, aliases), після чого проходять routing.
-- Додано API recent-чатів із chat-directory (`GET /api/chat-directory/recent`) для source picker у панелі без показу raw aliases у основному UI.
-- Для `sourcePlatform=signal` у модалці automation джерело обирається за `sourceChatKey` із recent-списку (назва/тип/last seen/preview), а не через ручні alias/UUID.
+- Signal: upsert у chat-directory виконується одразу після `normalizeSignalMessages` (до routing); логи каталогу — `[CHAT-DIR] …` у консоль процесу.
+- Chat-directory upsert ігнорує порожні/короткі/системні повідомлення та події старші за 24 год за `sentAt`, щоб не засмічувати каталог неактивними чатами.
+- Тимчасово upsert у chat-directory лише для `platform === "signal"` (`SIGNAL_ONLY_UPSERT` у `chatDirectory.js`); skip-логи містять `platform`, `chatId`, `senderId`, прев’ю тексту та `textLength`.
+- `GET /api/chats` за замовчуванням — список з **Chat Directory** для панелі (`resolvedName`, без aliases, окрім `debug=1`); `GET /api/chats?live=1` — колишній live-список (WA клієнт / Signal bridge) для мультивибору за `id`. Окремо: `GET /api/chat-directory/recent` (debug — aliases).
+- Signal source picker: підпис у UI — **manualLabel** каталогу > збережена **назва з flow** (`sourceChatRefs[0].name`) > **resolvedName** API; збереження flow не затирає людську назву UUID-ом; за відсутності `manualLabel` у каталозі після збереження — **`setManualLabelIfEmpty`** для стабільного `/api/chats`; autocomplete з **`GET /api/chats?platform=signal`**, префіл без ключа — `resolve-source`.
 
 ## Що ще потрібно зробити
 

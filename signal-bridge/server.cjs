@@ -63,8 +63,15 @@ function normalizeIncomingMessages(raw) {
   return arr
     .map((m) => {
       const source = m?.envelope?.source || m?.source || m?.chatId || m?.groupId || '';
-      const groupId = m?.envelope?.groupInfo?.groupId || m?.groupId || '';
-      const chatId = String(groupId || source || '').trim();
+      // signal-cli-api group id lives under envelope.dataMessage.groupInfo.groupId
+      // (envelope.groupInfo may be absent)
+      const groupId =
+        m?.envelope?.dataMessage?.groupInfo?.groupId ||
+        m?.envelope?.groupInfo?.groupId ||
+        m?.groupId ||
+        '';
+      const rawChatId = String(groupId || source || '').trim();
+      const chatId = groupId ? `group.${String(groupId).trim()}` : rawChatId;
       if (!chatId) return null;
       const chatCandidates = [];
       const addCandidate = (v) => {
@@ -75,8 +82,8 @@ function normalizeIncomingMessages(raw) {
       addCandidate(chatId);
       if (groupId) {
         const g = String(groupId).trim();
-        addCandidate(g);
-        if (!g.startsWith('group.')) addCandidate(`group.${g}`);
+        addCandidate(g); // raw group id
+        addCandidate(`group.${g}`); // canonical group id used across the app
       }
       if (source) addCandidate(String(source).trim());
       const text = String(
@@ -189,7 +196,9 @@ app.get('/chats', async (_req, res) => {
     if (!groupsRes?.__error) {
       const groups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
       for (const g of groups) {
-        const item = normalizeChatItem(g?.id || g?.groupId, g?.name || g?.id);
+        const gid = String(g?.id || g?.groupId || '').trim();
+        const prefixedId = gid ? `group.${gid}` : '';
+        const item = normalizeChatItem(prefixedId, g?.name || gid);
         if (item) chats.push(item);
       }
     } else {

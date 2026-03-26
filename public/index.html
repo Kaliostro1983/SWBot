@@ -604,9 +604,6 @@
       <button type="button" class="nav-btn" data-nav="settings">
         Налаштування
       </button>
-      <button type="button" class="nav-btn" id="panelLogoutBtn" onclick="panelLogout()">
-        Вийти з панелі
-      </button>
       <div class="sidebar-foot">
         <span id="appVersion" class="sidebar-version" title="Версія з файлу VERSION">—</span>
         <span>Локальна панель · порт змінних середовища</span>
@@ -615,114 +612,55 @@
 
     <main class="main">
       <section class="view active" id="view-integration">
-        <h1 class="page-title">Інтеграція WhatsApp</h1>
-        <div class="subtabs" id="integrationSubtabs">
-          <button type="button" class="subtab-btn active" data-subtab="general">Загальні</button>
-          <button type="button" class="subtab-btn" data-subtab="whatsapp">WhatsApp</button>
-          <button type="button" class="subtab-btn" data-subtab="signal">Signal</button>
-        </div>
-
-        <div class="subview active" id="subview-general">
-          <p class="hint" id="routingHint"></p>
-          <div class="grid-2">
-            <div class="card">
-              <h2>Загальний стан</h2>
-              <p class="sub">Статус сервісу та налаштувань маршрутизації</p>
-              <div style="margin-bottom: 12px;"><span id="statusBadge">—</span></div>
-              <div class="stat"><span class="label">Остання помилка</span><span id="lastError">—</span></div>
-              <div class="stat"><span class="label">Режим маршрутизації</span><span id="routingMode">—</span></div>
-              <div class="stat"><span class="label">Захист панелі</span><span id="panelAuthNote">—</span></div>
-              <div class="stat"><span class="label">FastAPI за замовчуванням</span><span id="panelFastapiUrl">—</span></div>
-              <div class="stat"><span class="label">Чат відповідей (.env)</span><span id="panelTargetEnv">—</span></div>
-            <div class="sub" style="margin-top:12px;">Активність за останню хвилину <span id="lastMinuteAt" style="font-size:12px; color:var(--muted);">—</span></div>
-            <div class="kpi-row">
-              <div class="kpi"><div class="kpi-label">received</div><div class="kpi-value" id="kpiReceived">0</div></div>
-              <div class="kpi"><div class="kpi-label">accepted</div><div class="kpi-value" id="kpiAccepted">0</div></div>
-              <div class="kpi"><div class="kpi-label">ignored</div><div class="kpi-value" id="kpiIgnored">0</div></div>
-              <div class="kpi"><div class="kpi-label">posted</div><div class="kpi-value" id="kpiPosted">0</div></div>
-              <div class="kpi"><div class="kpi-label">sent</div><div class="kpi-value" id="kpiSent">0</div></div>
-              <div class="kpi"><div class="kpi-label">errors</div><div class="kpi-value" id="kpiErrors">0</div></div>
+        <h1 class="page-title">Інтеграція</h1>
+        <div class="grid-2">
+          <div class="card">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+              <div>
+                <h2 style="margin:0 0 6px;">WhatsApp <span id="waConnStatus" style="font-size:12px;color:var(--muted);font-weight:700;">—</span></h2>
+                <p class="sub" id="waConnMeta" style="margin:0;">—</p>
+              </div>
+              <div class="flow-actions" style="margin-top:0;">
+                <button type="button" class="icon-btn" title="Вийти з акаунта" onclick="callApi('/api/logout')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+                <button type="button" class="icon-btn danger" title="Скинути сесію" onclick="resetSession()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+              </div>
             </div>
-            </div>
-            <div class="card">
-              <h2>Signal</h2>
-              <p class="sub">Стан Signal bridge</p>
-              <div class="stat"><span class="label">Увімкнено</span><span id="signalEnabled">—</span></div>
-              <div class="stat"><span class="label">Працює</span><span id="signalRunning">—</span></div>
-              <div class="stat"><span class="label">Останній poll</span><span id="signalLastPollAt">—</span></div>
-              <div class="stat"><span class="label">Остання помилка</span><span id="signalLastError">—</span></div>
+            <div class="toolbar" style="margin-top:14px;margin-bottom:0;">
+              <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="callApi('/api/login')">Зʼєднатися</button>
             </div>
           </div>
           <div class="card">
-            <h2>Журнал</h2>
-            <p class="sub">Останні події сервера (SSE)</p>
-            <div id="logs"></div>
-          </div>
-        </div>
-
-        <div class="subview" id="subview-whatsapp">
-          <div class="toolbar">
-            <button type="button" class="btn btn-accent" onclick="callApi('/api/start')" title="Відновити клієнт після зупинки або першого запуску">Запустити бота</button>
-            <button type="button" class="btn btn-outline" onclick="callApi('/api/login')" title="Те саме, що запуск; якщо потрібна авторизація — з’явиться QR">Увійти (QR)</button>
-            <button type="button" class="btn btn-ghost" onclick="callApi('/api/stop')">Зупинити</button>
-            <button type="button" class="btn btn-ghost" onclick="callApi('/api/logout')">Вийти з акаунта</button>
-            <button type="button" class="btn btn-danger" onclick="resetSession()">Скинути сесію</button>
-          </div>
-          <p class="muted" style="font-size:13px; margin:-8px 0 16px; line-height:1.45;">
-            Після <strong>Зупинити</strong> натисніть <strong>Запустити бота</strong> — клієнт знову підніметься. Якщо сесія WhatsApp ще збережена локально, QR може не з’явитися. Кнопка «Увійти (QR)» викликає той самий запуск (зручно, коли очікуєш QR).
-          </p>
-          <div class="grid-2">
-            <div class="card">
-              <h2>Стан WhatsApp</h2>
-              <p class="sub">Статус клієнта та останні події</p>
-              <div class="stat"><span class="label">Авторизовано</span><span id="authenticated">—</span></div>
-              <div class="stat"><span class="label">Готовий</span><span id="ready">—</span></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+              <div>
+                <h2 style="margin:0 0 6px;">Signal <span id="signalConnStatus" style="font-size:12px;color:var(--muted);font-weight:700;">—</span></h2>
+                <p class="sub" id="signalConnMeta" style="margin:0;">—</p>
+              </div>
+              <div class="flow-actions" style="margin-top:0;">
+                <button type="button" class="icon-btn" title="Вийти/перелінкувати" onclick="signalLoginQr()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button type="button" class="icon-btn danger" title="Скинути/оновити QR" onclick="signalLoginQr()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="card">
-              <h2>Акаунт</h2>
-              <p class="sub">Параметри після успішного входу</p>
-              <img id="qr" alt="QR" />
-              <div class="stat"><span class="label">WID</span><span id="clientWid">—</span></div>
-              <div class="stat"><span class="label">Ім’я (pushname)</span><span id="clientPushname">—</span></div>
-              <div class="stat"><span class="label">Платформа</span><span id="clientPlatform">—</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="subview" id="subview-signal">
-          <div class="card">
-            <h2>Signal інтеграція</h2>
-            <p class="sub">На цьому етапі Signal працює через bridge API.</p>
-            <div style="margin-bottom: 12px;"><span id="signalStatusBadge">—</span></div>
-            <div class="stat"><span class="label">Bridge URL</span><span id="signalApiHint">Див. `SIGNAL_API_URL` у `.env`</span></div>
-            <div class="stat"><span class="label">Стан worker</span><span id="signalRunning2">—</span></div>
-            <div class="stat"><span class="label">Прив'язано акаунт</span><span id="signalLinked">—</span></div>
-            <div class="stat"><span class="label">Останній poll</span><span id="signalLastPollAt2">—</span></div>
-            <div class="stat"><span class="label">Перевірка linked</span><span id="signalLastLinkedCheckAt">—</span></div>
-            <div class="stat"><span class="label">Остання помилка</span><span id="signalLastError2">—</span></div>
-            <div class="stat"><span class="label">Останній /link</span><span id="signalLastLinkAt">—</span></div>
-            <div class="stat"><span class="label">Помилка bridge /link</span><span id="signalLastLinkError">—</span></div>
-
-            <div class="toolbar" style="margin-top:14px;">
-              <button type="button" class="btn btn-accent" id="signalLoginBtn" onclick="signalLoginQr()" title="Згенеруєте новий link та QR для підключення пристрою в Signal">Увійти (QR)</button>
-              <button type="button" class="btn btn-ghost" id="signalRefreshBtn" onclick="signalLoginQr()" title="Оновити QR link">Оновити QR</button>
+            <div class="toolbar" style="margin-top:14px;margin-bottom:0;">
+              <button type="button" class="btn btn-accent" id="signalConnectBtn" onclick="signalLoginQr()">Зʼєднатися</button>
             </div>
             <div id="signalLinkAlert" class="signal-alert"></div>
             <img id="signalQr" alt="Signal QR" style="display:none; width: 260px; border-radius: 12px; background: #fff; padding: 10px; margin-top: 8px;" />
-            <div id="signalConsole" class="signal-console"></div>
           </div>
         </div>
       </section>
 
       <section class="view" id="view-flows">
         <h1 class="page-title">Автоматизації</h1>
-        <p class="hint">
-          Сценарій: <strong>WhatsApp/Signal → WhatsApp/Signal/FastAPI</strong>. Спочатку <strong>фільтри</strong> за ключовими словами та частотами (підрядки в тексті); якщо заповнені обидва поля — достатньо збігу в <strong>одному</strong> з них. Токен <code>*</code> у будь-якому з полів — без фільтрації.
-          Якщо список автоматизацій <strong>не порожній</strong>, обробляються лише вказані чати-джерела. Якщо порожній — маршрут з <code>.env</code> (<code>SOURCE_CHAT</code> / <code>TARGET_CHAT</code>; опційно <code>SOURCE_FILTER_*</code>).
-        </p>
         <div class="toolbar">
           <button type="button" class="btn btn-outline" onclick="openFlowModal()">+ Додати автоматизацію</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats()">Оновити список чатів</button>
         </div>
         <div id="flowList" class="flow-list"></div>
       </section>
@@ -780,7 +718,6 @@
       <form id="flowForm" onsubmit="submitFlow(event)">
         <input type="hidden" id="flowId" value="" />
         <div class="modal-section">
-          <h3>Загальні налаштування</h3>
           <div class="field">
             <label for="flowName">Назва автоматизації</label>
             <input id="flowName" required maxlength="120" placeholder="Напр. Вхідний потік з групи А" />
@@ -803,11 +740,7 @@
                 </select>
               </div>
             </div>
-            <p class="sub field-hint" id="flowHintFastapi">
-              Endpoint і чат для <code>actions</code> — з <code>.env</code> (<code>FASTAPI_URL</code>, <code>TARGET_CHAT</code>).
-            </p>
             <p class="sub field-hint" id="flowHintWa" style="display: none">
-              Повідомлення пересилаються у вибраний цільовий чат.
             </p>
           </div>
           <div class="field" id="flowSourcesWaWrap">
@@ -819,10 +752,10 @@
                 <div id="flowSourcesDropdown" class="chat-dropdown"></div>
                 <select id="flowSources" multiple style="display:none;"></select>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats(true)">Оновити</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="refreshChatsForSide('source')">Оновити</button>
             </div>
             <div id="flowSourcesStatus" class="inline-note"></div>
-            <p class="sub field-hint">Оберіть один або кілька чатів джерела (Ctrl/Shift для мультивибору).</p>
+            <p class="sub field-hint" id="flowSourcesFieldHint"></p>
           </div>
           <div class="field" id="flowTargetWrap" style="display: none">
             <label for="flowTarget">Куди надсилати</label>
@@ -835,48 +768,35 @@
                   <option value="">— Оберіть групу —</option>
                 </select>
               </div>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="loadChats(true)">Оновити</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="refreshChatsForSide('target')">Оновити</button>
             </div>
             <div id="flowTargetStatus" class="inline-note"></div>
           </div>
         </div>
         <div class="modal-section">
-          <h3>Аналіз тексту повідомлення</h3>
           <div class="field">
             <label for="flowKeywords">Ключові слова (текст повідомлення)</label>
             <textarea
               id="flowKeywords"
               rows="3"
-              placeholder="Кілька значень через кому або з нового рядка. * — не фільтрувати за текстом (якщо * лише тут або у «Частотах»)."
+              placeholder="Кілька значень через кому або з нового рядка"
             ></textarea>
-            <p class="sub field-hint">
-              Має збігатися хоча б один токен (підрядок у тексті). Якщо заповнені й «Частоти» — достатньо збігу в одному з полів (АБО).
-            </p>
           </div>
           <div class="field">
             <label for="flowFrequencies">Частоти</label>
             <textarea
               id="flowFrequencies"
               rows="3"
-              placeholder="Напр. 144.500 або позначення діапазону; * — не фільтрувати за частотами"
+              placeholder="Напр. 144.500 або позначення діапазону"
             ></textarea>
-            <p class="sub field-hint">Так само підрядки в тексті повідомлення (наприклад згадка частоти в дописі).</p>
-          </div>
-          <div class="field">
-            <label for="flowPlugin">Власні функції (plugins)</label>
-            <select id="flowPlugin" disabled>
-              <option>Незабаром</option>
-            </select>
           </div>
         </div>
         <div class="modal-section">
-          <h3>Координати та артефакти</h3>
           <div class="field">
             <label><input type="checkbox" disabled /> Додавати скріншот з координатами</label>
           </div>
           <div class="field">
             <label><input type="checkbox" id="flowSendAttachments" /> Пересилати зображення з повідомлення</label>
-            <p class="sub field-hint">Для WA→WhatsApp і для WA→FastAPI (у цільовий чат після відповіді API, якщо є медіа).</p>
           </div>
         </div>
         <div class="toolbar" style="margin-top:18px;">
@@ -893,6 +813,10 @@
     let chatsCacheByPlatform = { whatsapp: [], signal: [] };
     let recentSourceChatsByPlatform = { whatsapp: [], signal: [] };
     let chatsCacheAtByPlatform = { whatsapp: 0, signal: 0 };
+    // Cache must depend on "only groups" toggle; otherwise UI can show stale contacts.
+    let chatsCacheOnlyGroupsByPlatform = { whatsapp: null, signal: null };
+    /** Помилка завантаження каталогу для Signal source picker (порожньо = ОК). */
+    let signalSourceChatsLoadError = '';
     let cachedFlowsSnapshot = [];
     let flowChatRefsById = {};
     const CHATS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -906,6 +830,10 @@
     let signalLinkWatchRequestInFlight = false;
     let lastStateSnapshot = null;
     let backgroundWarmupStarted = false;
+    // Guards against stale async updates after rerender/unmount (modal close) or rapid refresh.
+    let flowModalSession = 0;
+    let chatsLoadSession = 0;
+    const chatsAbortByKey = new Map(); // key -> AbortController
 
     const ICON_COPY =
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
@@ -944,6 +872,7 @@
     }
 
     function appendLog(item) {
+      if (!logsEl) return;
       const meta = item.meta ? ' ' + JSON.stringify(item.meta) : '';
       logsEl.textContent += `[${item.ts}] [${item.level}] ${item.message}${meta}\n`;
       logsEl.scrollTop = logsEl.scrollHeight;
@@ -989,7 +918,9 @@
     }
 
     function platformLoadingMessage(platform) {
-      if (platform === 'signal') return 'Завантаження чатів Signal... Це може тривати до 1-2 хв.';
+      if (platform === 'signal') {
+        return 'Завантаження каталогу чатів Signal… Якщо далі потрібен live-список (ціль Signal), це може зайняти до 1–2 хв.';
+      }
       if (platform === 'whatsapp') return 'Завантаження чатів WhatsApp...';
       return '';
     }
@@ -1040,60 +971,32 @@
     }
 
     function renderState(s) {
-      setText('statusBadge', s.status);
-      setText('authenticated', s.authenticated);
-      setText('ready', s.ready);
-      setText('lastError', s.lastError);
-      const rm = s.routingMode === 'flows' ? 'Автоматизації (data/flows.json)' : 'Змінні середовища (.env)';
-      setText('routingMode', rm);
-
-      const p = s.panel;
-      if (p) {
-        setText('panelAuthNote', p.authRequired ? 'Увімкнено (PANEL_USER)' : 'Вимкнено — задайте PANEL_USER і PANEL_PASSWORD');
-        setText('panelFastapiUrl', p.fastapiUrlDefault || '—');
-        setText('panelTargetEnv', p.targetChatDefault || '—');
+      // Simplified Integration UI
+      const waConnected = Boolean(s?.authenticated) && Boolean(s?.ready);
+      const waConnStatus = document.getElementById('waConnStatus');
+      const waConnMeta = document.getElementById('waConnMeta');
+      const waConnectBtn = document.getElementById('waConnectBtn');
+      if (waConnStatus) waConnStatus.textContent = waConnected ? 'connected' : 'not connected';
+      if (waConnMeta) {
+        const wid = String(s?.clientInfo?.wid || '').trim();
+        const phone = wid && wid.includes('@') ? wid.split('@')[0] : wid;
+        waConnMeta.textContent = waConnected && phone ? `Акаунт: +${String(phone).replace(/\D/g, '')}` : '—';
       }
+      if (waConnectBtn) waConnectBtn.style.display = waConnected ? 'none' : 'inline-flex';
+
       const sig = s.signal || {};
       lastStateSnapshot = s;
-      const act = s.activity || {};
-      const lm = act.lastMinute || {};
-      setText('signalEnabled', sig.enabled);
-      setText('signalRunning', sig.running);
-      setText('signalLastPollAt', sig.lastPollAt);
-      setText('signalLastError', sig.lastError);
-      setText('signalRunning2', sig.running);
-      setText('signalLinked', sig.linked === null || sig.linked === undefined ? '—' : sig.linked);
-      setText('signalLastPollAt2', sig.lastPollAt);
-      setText('signalLastLinkedCheckAt', sig.lastLinkedCheckAt);
-      setText('signalLastError2', sig.lastError);
-      setText('signalLastLinkAt', sig.lastLinkAt);
-      setText('signalLastLinkError', sig.lastLinkError);
-      const signalLoginBtn = document.getElementById('signalLoginBtn');
-      if (signalLoginBtn) {
-        if (sig.linked === true) {
-          signalLoginBtn.textContent = 'Перелінкувати';
-          signalLoginBtn.title = 'Акаунт уже підключено. Створити новий QR для перелінкування';
-        } else {
-          signalLoginBtn.textContent = 'Увійти (QR)';
-          signalLoginBtn.title = 'Згенеруєте новий link та QR для підключення пристрою в Signal';
-        }
+      const signalConnected = sig.linked === true;
+      const signalConnStatus = document.getElementById('signalConnStatus');
+      const signalConnMeta = document.getElementById('signalConnMeta');
+      const signalConnectBtn = document.getElementById('signalConnectBtn');
+      if (signalConnStatus) signalConnStatus.textContent = signalConnected ? 'connected' : 'not connected';
+      if (signalConnMeta) {
+        const acc = Array.isArray(sig.linkedAccounts) && sig.linkedAccounts.length ? String(sig.linkedAccounts[0]) : '';
+        signalConnMeta.textContent = signalConnected && acc ? `Акаунт: ${acc}` : '—';
       }
-      const ssb = document.getElementById('signalStatusBadge');
-      if (ssb) {
-        if (sig.linked === true) {
-          ssb.textContent = 'connected';
-          ssb.style.background = 'rgba(34, 197, 94, 0.2)';
-          ssb.style.color = '#86efac';
-        } else if (sig.linked === false) {
-          ssb.textContent = 'not linked';
-          ssb.style.background = 'rgba(239, 68, 68, 0.2)';
-          ssb.style.color = '#fecaca';
-        } else {
-          ssb.textContent = 'checking';
-          ssb.style.background = '#334155';
-          ssb.style.color = '#e2e8f0';
-        }
-      }
+      if (signalConnectBtn) signalConnectBtn.style.display = signalConnected ? 'none' : 'inline-flex';
+
       if (sig.linked === true) {
         setSignalLinkAlert('');
         stopSignalLinkWatch();
@@ -1116,37 +1019,8 @@
         verEl.textContent = v.startsWith('v') ? v : `v${v}`;
       }
 
-      setText('clientWid', s.clientInfo?.wid);
-      setText('clientPushname', s.clientInfo?.pushname);
-      setText('clientPlatform', s.clientInfo?.platform);
-      setText('lastMinuteAt', act.lastMinuteAt);
-      setText('kpiReceived', Number(lm.received || 0));
-      setText('kpiAccepted', Number(lm.accepted || 0));
-      setText('kpiIgnored', Number(lm.ignored || 0));
-      setText('kpiPosted', Number(lm.posted || 0));
-      setText('kpiSent', Number(lm.sent || 0));
-      setText('kpiErrors', Number(lm.errors || 0));
-
       const fc = document.getElementById('flowCount');
       if (fc) fc.textContent = (s.flows && s.flows.length) ? s.flows.length : '0';
-
-      if (s.qrAvailable && s.qrAvailableData) {
-        qrEl.src = s.qrAvailableData;
-        qrEl.style.display = 'block';
-      } else {
-        qrEl.style.display = 'none';
-        qrEl.removeAttribute('src');
-      }
-
-      const hint = document.getElementById('routingHint');
-      if (hint) {
-        if (s.routingMode === 'env') {
-          hint.innerHTML = 'Увімкнено <strong>один маршрут з .env</strong>. Додайте автоматизації для кількох чатів-джерел → FastAPI.';
-        } else {
-          hint.innerHTML =
-            'Активні <strong>автоматизації</strong> — обробляються лише вказані чати-джерела (WA → FastAPI або WA → WhatsApp).';
-        }
-      }
 
       cachedFlowsSnapshot = s.flows || [];
       rememberFlowChatRefs(cachedFlowsSnapshot);
@@ -1280,6 +1154,7 @@
           const paused = Boolean(f.paused);
           const pauseIcon = paused ? ICON_PLAY : ICON_PAUSE;
           const pauseTitle = paused ? 'Запустити' : 'Пауза';
+          const fid = encodeURIComponent(f.id);
           return `
         <div class="flow-card${paused ? ' paused' : ''}">
           <div>
@@ -1292,10 +1167,10 @@
             </div>
           </div>
           <div class="flow-actions">
-            <button type="button" class="icon-btn flow-dup-btn" data-flowid="${encodeURIComponent(f.id)}" title="Дублювати">${ICON_COPY}</button>
-            <button type="button" class="icon-btn flow-pause-btn" data-flowid="${encodeURIComponent(f.id)}" title="${pauseTitle}">${pauseIcon}</button>
-            <button type="button" class="icon-btn flow-edit-btn" data-flowid="${encodeURIComponent(f.id)}" title="Редагувати">${ICON_EDIT}</button>
-            <button type="button" class="icon-btn flow-del-btn danger" data-flowid="${encodeURIComponent(f.id)}" title="Видалити">${ICON_TRASH}</button>
+            <button type="button" class="icon-btn flow-dup-btn" data-flowid="${fid}" onclick="duplicateFlow(decodeURIComponent('${fid}'))" title="Дублювати">${ICON_COPY}</button>
+            <button type="button" class="icon-btn flow-pause-btn" data-flowid="${fid}" onclick="togglePauseFlow(decodeURIComponent('${fid}'))" title="${pauseTitle}">${pauseIcon}</button>
+            <button type="button" class="icon-btn flow-edit-btn" data-flowid="${fid}" onclick="editFlow(decodeURIComponent('${fid}'))" title="Редагувати">${ICON_EDIT}</button>
+            <button type="button" class="icon-btn flow-del-btn danger" data-flowid="${fid}" onclick="deleteFlow(decodeURIComponent('${fid}'))" title="Видалити">${ICON_TRASH}</button>
           </div>
         </div>
       `;
@@ -1422,18 +1297,34 @@
       activate(getIntegrationSubtab());
     }
 
-    async function loadChatsForPlatform(platform) {
+    async function loadChatsForPlatform(platform, forceRefresh = false) {
       const onlyGroups = getShowOnlyGroups() ? '1' : '0';
-      const endpoint = '/api/chats?platform=' + encodeURIComponent(platform) + '&only_groups=' + onlyGroups;
+      const endpoint =
+        '/api/messenger-chats?platform=' +
+        encodeURIComponent(platform) +
+        '&only_groups=' +
+        onlyGroups +
+        (forceRefresh ? '&refresh=1' : '');
       const maxAttempts = platform === 'signal' ? 2 : 1;
       const timeoutMs = platform === 'signal' ? 120000 : 30000;
       let lastErr = null;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const key = `messenger:${platform}`;
+        // Cancel any in-flight request for this platform.
+        try {
+          const prev = chatsAbortByKey.get(key);
+          if (prev) prev.abort();
+        } catch (_) {
+          /* ignore */
+        }
         const ctl = new AbortController();
+        chatsAbortByKey.set(key, ctl);
         const t = setTimeout(() => ctl.abort(), timeoutMs);
         try {
           const res = await fetch(endpoint, { credentials: 'same-origin', signal: ctl.signal });
           clearTimeout(t);
+          // Ignore stale responses (modal closed / new load started).
+          if (flowModalSession === 0 || chatsLoadSession === 0) return [];
           if (res.status === 401) {
             window.location.href = '/login.html';
             return [];
@@ -1454,28 +1345,251 @@
       throw lastErr || new Error('Не вдалося отримати чати');
     }
 
-    async function loadRecentDirectoryChats(platform) {
-      const endpoint = '/api/chat-directory/recent?platform=' + encodeURIComponent(platform);
-      const res = await fetch(endpoint, { credentials: 'same-origin' });
-      if (res.status === 401) {
-        window.location.href = '/login.html';
-        return [];
+    function directoryPickLabel(c) {
+      const r = String(c?.resolvedName || '').trim();
+      if (r) return r;
+      const m = String(c?.manualLabel || '').trim();
+      if (m) return m;
+      const d = String(c?.displayName || '').trim();
+      if (d) return d;
+      return String(c?.chatKey || '').trim() || 'Невідомий чат';
+    }
+
+    function flowIsSignalSourceClient(f) {
+      return (
+        String(f?.sourcePlatform || '') === 'signal' ||
+        String(f?.direction || '').startsWith('signal_')
+      );
+    }
+
+    function isTechnicalSignalUiName(name, chatKey) {
+      const n = String(name || '').trim();
+      if (!n) return true;
+      const k = String(chatKey || '').trim();
+      if (k && n === k) return true;
+      if (/^group\./i.test(n)) return true;
+      if (/^signal:/i.test(n)) return true;
+      if (/^signal-group:/i.test(n)) return true;
+      if (/^[0-9a-f-]{36}$/i.test(n)) return true;
+      if (/^\+?\d{10,}$/.test(n)) return true;
+      if (n.length > 48 && /^[A-Za-z0-9+/=_-]+$/.test(n)) return true;
+      return false;
+    }
+
+    function isTechnicalSignalLabel(value, chatKey) {
+      return isTechnicalSignalUiName(value, chatKey);
+    }
+
+    function shortStableSuffixFromId(rawId) {
+      const s = String(rawId || '').trim();
+      if (!s) return '???';
+      // Tiny stable hash (djb2) -> produce readable code like "K845".
+      let h = 5381;
+      for (let i = 0; i < s.length; i++) {
+        h = ((h << 5) + h) ^ s.charCodeAt(i);
+        h |= 0;
       }
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.message || 'Не вдалося отримати recent chats');
-      return Array.isArray(data.chats) ? data.chats : [];
+      const u = h >>> 0;
+      const letter = String.fromCharCode(65 + (u % 26)); // A..Z
+      const digits = String((Math.floor(u / 26) % 1000)).padStart(3, '0');
+      return `${letter}${digits}`;
+    }
+
+    function buildSignalFallbackLabel(chat) {
+      const c = chat || {};
+      const isGroup = String(c.chatType || '').trim() === 'group';
+      const base = isGroup ? 'Група Signal' : 'Чат Signal';
+      const stableId = String(c.chatKey || '').trim();
+      const suf = shortStableSuffixFromId(stableId);
+      return `${base} • ${suf}`;
+    }
+
+    function getEditingFlowId() {
+      return String(document.getElementById('flowId')?.value || '').trim();
+    }
+
+    /** Назва з flow для цього chatKey: спочатку редагований flow, потім будь-який signal-flow з тим самим ключем. */
+    function getSignalFlowRefNameForChatKey(chatKey, preferEditingFlowId) {
+      const k = String(chatKey || '').trim();
+      if (!k) return '';
+      const flows = cachedFlowsSnapshot || [];
+      if (preferEditingFlowId) {
+        const prefer = flows.find((f) => f.id === preferEditingFlowId);
+        if (prefer && flowIsSignalSourceClient(prefer) && String(prefer.sourceChatKey || '') === k) {
+          const n = String(prefer.sourceChatRefs?.[0]?.name || '').trim();
+          if (n && !isTechnicalSignalUiName(n, k)) return n;
+        }
+      }
+      for (const f of flows) {
+        if (!flowIsSignalSourceClient(f)) continue;
+        if (String(f.sourceChatKey || '') !== k) continue;
+        const n = String(f.sourceChatRefs?.[0]?.name || '').trim();
+        if (n && !isTechnicalSignalUiName(n, k)) return n;
+      }
+      return '';
+    }
+
+    function getDisplayLabel(chat) {
+      const c = chat || {};
+      const k = String(c.chatKey || '').trim();
+      const manualLabel = String(c.manualLabel || '').trim();
+      if (manualLabel && !isTechnicalSignalLabel(manualLabel, k)) return manualLabel;
+
+      const name = String(c.name || '').trim();
+      if (name && !isTechnicalSignalLabel(name, k)) return name;
+
+      const displayName = String(c.displayName || '').trim();
+      if (displayName && !isTechnicalSignalLabel(displayName, k)) return displayName;
+
+      const flowName = getSignalFlowRefNameForChatKey(k, getEditingFlowId());
+      if (flowName && !isTechnicalSignalLabel(flowName, k)) return flowName;
+
+      const resolvedName = String(c.resolvedName || '').trim();
+      if (resolvedName && !isTechnicalSignalLabel(resolvedName, k)) return resolvedName;
+
+      return buildSignalFallbackLabel(c);
+    }
+
+    /**
+     * If flow chatKey is not present in directory response, do NOT auto-pick
+     * any "similar" chat by name. We also avoid inserting synthetic rows that
+     * could mask a missing directory entry after refresh.
+     *
+     * We only enrich an existing row's human label when it exists.
+     */
+    function ensureSignalPickerRowForEditingFlow(flow) {
+      if (!flow || !flowIsSignalSourceClient(flow) || !flow.sourceChatKey) return;
+      const k = String(flow.sourceChatKey || '').trim();
+      const arr = recentSourceChatsByPlatform.signal;
+      if (!Array.isArray(arr)) return;
+      const human = String(flow.sourceChatRefs?.[0]?.name || '').trim();
+      const safeHuman = human && !isTechnicalSignalUiName(human, k) ? human : '';
+      if (arr.some((x) => String(x.chatKey || '') === k)) {
+        const row = arr.find((x) => String(x.chatKey || '') === k);
+        if (row && safeHuman) {
+          const curName = String(row?.name || '').trim();
+          if (!curName || isTechnicalSignalUiName(curName, k) || curName === k) {
+            row.name = safeHuman;
+          }
+        }
+        return;
+      }
+    }
+
+    function signalChatTypeHint(c) {
+      return c?.chatType === 'direct' ? 'Тип: особистий' : 'Тип: група';
+    }
+
+    function signalSourceChipLabel(chatKey) {
+      const key = String(chatKey || '').trim();
+      if (!key) return '';
+      const full = recentSourceChatsByPlatform.signal || [];
+      const row = full.find((x) => String(x.chatKey || '') === key);
+      if (row) return getDisplayLabel(row);
+      const fromFlow = getSignalFlowRefNameForChatKey(key, getEditingFlowId());
+      if (fromFlow) return fromFlow;
+      return key.length > 36 ? key.slice(0, 34) + '…' : key;
+    }
+
+    function buildSignalDisambiguatedLabel(chat, labelCounts) {
+      const c = chat || {};
+      const base = getDisplayLabel(c);
+      const k = String(c.chatKey || '').trim();
+      if (!base || !k) return base;
+      const key = base.toLowerCase();
+      const n = labelCounts && typeof labelCounts.get === 'function' ? Number(labelCounts.get(key) || 0) : 0;
+      if (n > 1) {
+        // Avoid showing technical IDs; use stable short suffix like fallback does.
+        return `${base} • ${shortStableSuffixFromId(k)}`;
+      }
+      return base;
+    }
+
+    function refreshFlowSourceAliasesDebug() {
+      // debug section removed
+    }
+
+    /**
+     * Списки для Signal source picker: лише GET /api/chats?platform=signal (Chat Directory).
+     * @returns {{ ok: boolean, chats: object[], error: string|null }}
+     */
+    async function loadSignalDirectoryChatsFromApi() {
+      const endpoint = '/api/chats?platform=signal';
+      try {
+        const key = 'dir:signal';
+        try {
+          const prev = chatsAbortByKey.get(key);
+          if (prev) prev.abort();
+        } catch (_) {
+          /* ignore */
+        }
+        const ctl = new AbortController();
+        chatsAbortByKey.set(key, ctl);
+        const res = await fetch(endpoint, { credentials: 'same-origin', signal: ctl.signal });
+        if (res.status === 401) {
+          window.location.href = '/login.html';
+          return { ok: false, chats: [], error: null };
+        }
+        const text = await res.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          return {
+            ok: false,
+            chats: [],
+            error: 'Некоректна відповідь сервера (очікувався JSON). Спробуйте «Оновити».'
+          };
+        }
+        if (!res.ok) {
+          return {
+            ok: false,
+            chats: [],
+            error:
+              data.message ||
+              `Не вдалося отримати чати (HTTP ${res.status}). Перевірте сервер і спробуйте ще раз.`
+          };
+        }
+        if (!data.ok) {
+          return {
+            ok: false,
+            chats: [],
+            error: data.message || 'Сервер повернув помилку при отриманні списку чатів.'
+          };
+        }
+        return {
+          ok: true,
+          chats: Array.isArray(data.chats) ? data.chats : [],
+          error: null
+        };
+      } catch (e) {
+        const msg =
+          e?.name === 'AbortError'
+            ? 'Перевищено час очікування відповіді сервера.'
+            : (e?.message || 'Мережа або сервер недоступні. Перевірте з’єднання та спробуйте «Оновити».');
+        return { ok: false, chats: [], error: msg };
+      }
     }
 
     async function ensureChatsLoaded(platform, force = false) {
       const now = Date.now();
       const cached = chatsCacheByPlatform[platform] || [];
       const ts = Number(chatsCacheAtByPlatform[platform] || 0);
+      const onlyGroups = getShowOnlyGroups();
+      const cachedOnlyGroups = chatsCacheOnlyGroupsByPlatform[platform];
+      const onlyGroupsChanged = cachedOnlyGroups === null ? false : cachedOnlyGroups !== onlyGroups;
+      // If user toggled "only groups", invalidate per-platform cache immediately.
+      if (onlyGroupsChanged) {
+        chatsCacheByPlatform[platform] = [];
+        chatsCacheAtByPlatform[platform] = 0;
+      }
       if (!force && cached.length > 0 && now - ts < CHATS_CACHE_TTL_MS) {
         return cached;
       }
-      const list = await loadChatsForPlatform(platform);
+      const list = await loadChatsForPlatform(platform, force);
       chatsCacheByPlatform[platform] = list;
       chatsCacheAtByPlatform[platform] = Date.now();
+      chatsCacheOnlyGroupsByPlatform[platform] = onlyGroups;
       return list;
     }
 
@@ -1492,6 +1606,8 @@
     }
 
     async function loadChats(force = false) {
+      const localModalSession = flowModalSession;
+      const localLoadSession = ++chatsLoadSession;
       const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
       const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
       setFlowStatusFor('source', '', '');
@@ -1502,21 +1618,118 @@
       }
       try {
         if (src === 'signal') {
-          recentSourceChatsByPlatform.signal = await loadRecentDirectoryChats('signal');
+          if (force) {
+            try {
+              await fetch('/api/signal/chats/refresh', { credentials: 'same-origin' });
+            } catch {
+              // Ignore refresh failure here; the directory endpoint below will surface a useful error.
+            }
+          }
+          const dir = await loadSignalDirectoryChatsFromApi();
+          if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
+          recentSourceChatsByPlatform.signal = dir.chats;
+          if (dir.ok) {
+            signalSourceChatsLoadError = '';
+            setFlowStatusFor('source', '', '');
+          } else if (dir.error) {
+            signalSourceChatsLoadError = dir.error;
+            setFlowStatusFor('source', 'error', dir.error);
+          } else {
+            signalSourceChatsLoadError = '';
+          }
+        } else {
+          signalSourceChatsLoadError = '';
         }
         await ensureChatsLoaded(src, force);
+        if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
         if (tgt !== 'fastapi') {
           await ensureChatsLoaded(tgt, force);
+          if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
         }
-        setFlowStatusFor('source', '', '');
         setFlowStatusFor('target', '', '');
+        if (src === 'signal') {
+          if (!signalSourceChatsLoadError) setFlowStatusFor('source', '', '');
+        } else {
+          setFlowStatusFor('source', '', '');
+        }
       } catch (e) {
         const msg = e?.name === 'AbortError'
           ? 'Таймаут завантаження чатів. Натисніть "Оновити" ще раз.'
           : (e?.message || 'Не вдалося отримати чати');
         setFlowStatusFor('source', 'error', msg);
         if (tgt !== 'fastapi') setFlowStatusFor('target', 'error', msg);
-        alert(msg);
+        if (src === 'signal') {
+          signalSourceChatsLoadError = msg;
+          recentSourceChatsByPlatform.signal = [];
+        }
+        // Don't spam alerts on transient WA Web reloads (Puppeteer detached frame).
+        if (!String(msg).includes('detached Frame')) {
+          alert(msg);
+        }
+      }
+      renderSourcePicker();
+      renderTargetPicker();
+      renderFlowList(cachedFlowsSnapshot);
+    }
+
+    async function refreshChatsForSide(side) {
+      const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
+      const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
+      if (side === 'source') {
+        setFlowStatusFor('source', 'info', platformLoadingMessage(src));
+        try {
+          let refreshWarning = '';
+          if (src === 'signal') {
+            try {
+              const rr = await fetch('/api/signal/chats/refresh', { credentials: 'same-origin' });
+              if (!rr.ok) {
+                const txt = await rr.text().catch(() => '');
+                refreshWarning = `live refresh Signal недоступний (HTTP ${rr.status})`;
+                if (txt) refreshWarning += `. ${txt.slice(0, 140)}`;
+              }
+            } catch (e) {
+              refreshWarning = e?.message ? `live refresh Signal недоступний: ${e.message}` : 'live refresh Signal недоступний';
+            }
+            const dir = await loadSignalDirectoryChatsFromApi();
+            recentSourceChatsByPlatform.signal = dir.chats;
+            if (dir.ok) {
+              signalSourceChatsLoadError = '';
+              const count = Array.isArray(dir.chats) ? dir.chats.length : 0;
+              const doneMsg = refreshWarning
+                ? `Оновлення завершено (${count} чатів), але ${refreshWarning}.`
+                : `Оновлення завершено: ${count} чатів Signal.`;
+              setFlowStatusFor('source', 'info', doneMsg);
+            } else {
+              const msg = dir.error || 'Не вдалося отримати чати Signal';
+              signalSourceChatsLoadError = msg;
+              setFlowStatusFor('source', 'error', msg);
+            }
+          } else {
+            signalSourceChatsLoadError = '';
+            const list = await ensureChatsLoaded(src, true);
+            const count = Array.isArray(list) ? list.length : 0;
+            setFlowStatusFor('source', 'info', `Оновлення завершено: ${count} чатів.`);
+            renderSourcePicker();
+            renderTargetPicker();
+            renderFlowList(cachedFlowsSnapshot);
+            return;
+          }
+          await ensureChatsLoaded(src, true);
+        } catch (e) {
+          const msg = e?.name === 'AbortError' ? 'Таймаут завантаження чатів. Натисніть "Оновити" ще раз.' : (e?.message || 'Не вдалося отримати чати');
+          setFlowStatusFor('source', 'error', msg);
+        }
+      } else if (side === 'target') {
+        if (tgt === 'fastapi') return;
+        setFlowStatusFor('target', 'info', platformLoadingMessage(tgt));
+        try {
+          const list = await ensureChatsLoaded(tgt, true);
+          const count = Array.isArray(list) ? list.length : 0;
+          setFlowStatusFor('target', 'info', `Оновлення завершено: ${count} чатів.`);
+        } catch (e) {
+          const msg = e?.name === 'AbortError' ? 'Таймаут завантаження чатів. Натисніть "Оновити" ще раз.' : (e?.message || 'Не вдалося отримати чати');
+          setFlowStatusFor('target', 'error', msg);
+        }
       }
       renderSourcePicker();
       renderTargetPicker();
@@ -1549,13 +1762,21 @@
     function getFilteredRecentSourceChats(platform, query) {
       const q = String(query || '').trim().toLowerCase();
       const list = recentSourceChatsByPlatform[platform] || [];
-      if (!q) return list.slice(0, 200);
-      return list.filter((c) => {
+      const onlyGroups = getShowOnlyGroups();
+      const base = onlyGroups
+        ? list.filter((c) => String(c?.chatType || '') === 'group')
+        : list;
+      if (!q) return base.slice(0, 200);
+      return base.filter((c) => {
+        const primary = getDisplayLabel(c);
         const hay = [
+          primary,
+          c.name || '',
+          c.resolvedName || '',
           c.manualLabel || '',
           c.displayName || '',
+          c.chatKey || '',
           c.chatType || '',
-          c.platform || '',
           c.lastMessagePreview || ''
         ].join(' ').toLowerCase();
         return hay.includes(q);
@@ -1573,9 +1794,22 @@
       const srcLabel = document.querySelector('label[for="flowSources"]');
       if (srcLabel) {
         srcLabel.textContent = src === 'signal'
-          ? 'Звідки надсилати (оберіть чат з recent списку)'
+          ? 'Звідки надсилати (каталог чатів)'
           : 'Звідки надсилати (оберіть кілька)';
       }
+      const hint = document.getElementById('flowSourcesFieldHint');
+      if (hint) {
+        hint.textContent = '';
+      }
+      const srcSearch = document.getElementById('flowSourcesSearch');
+      if (srcSearch) {
+        srcSearch.placeholder =
+          src === 'signal'
+            ? 'Пошук: manualLabel, назва з flow, resolvedName…'
+            : 'Пошук і додавання чатів...';
+      }
+      const adv = document.getElementById('flowSourceSignalAdvanced');
+      if (adv) adv.style.display = 'none';
       const wrap = document.getElementById('flowTargetWrap');
       const hFa = document.getElementById('flowHintFastapi');
       const hWa = document.getElementById('flowHintWa');
@@ -1601,32 +1835,63 @@
       const box = document.getElementById('flowSourcesSelected');
       const dd = document.getElementById('flowSourcesDropdown');
       const search = document.getElementById('flowSourcesSearch');
+      const status = document.getElementById('flowSourcesStatus');
       if (!box || !dd || !search) return;
       const showIds = getShowChatIds();
       const query = String(search.value || '').trim();
       const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
       if (src === 'signal') {
         const list = getFilteredRecentSourceChats('signal', query);
-        const selected = list.find((x) => String(x.chatKey || '') === String(flowSelectedSourceChatKey || ''));
-        const selectedLabel = selected
-          ? (selected.manualLabel || selected.displayName || 'Невідомий чат')
+        const fullRecent = recentSourceChatsByPlatform.signal || [];
+        const labelCounts = new Map();
+        for (const c of fullRecent) {
+          const t = String(getDisplayLabel(c) || '').trim();
+          if (!t) continue;
+          const kk = t.toLowerCase();
+          labelCounts.set(kk, (labelCounts.get(kk) || 0) + 1);
+        }
+        const key = String(flowSelectedSourceChatKey || '').trim();
+        const selectedInList = list.find((x) => String(x.chatKey || '') === key);
+        const selectedInFull = fullRecent.find((x) => String(x.chatKey || '') === key);
+        const selected = selectedInList || selectedInFull;
+        const selectedMissing = Boolean(key) && !selectedInFull;
+        const chipText = key
+          ? selected
+            ? buildSignalDisambiguatedLabel(selected, labelCounts)
+            : signalSourceChipLabel(key)
           : '';
-        box.innerHTML = selectedLabel
-          ? `<span class="chip">${escapeHtml(selectedLabel)}<button type="button" data-source-chat-key-remove="1" aria-label="Прибрати">×</button></span>`
+        box.innerHTML = chipText
+          ? `<span class="chip">${escapeHtml(chipText)}<button type="button" data-source-chat-key-remove="1" aria-label="Прибрати">×</button></span>`
           : '';
-        dd.innerHTML = list
+        if (status) {
+          status.textContent = selectedMissing
+            ? 'Обраний чат не знайдено в каталозі. Натисніть «Оновити» (або перевірте Signal bridge).'
+            : '';
+        }
+        const errBanner = signalSourceChatsLoadError
+          ? `<div class="chat-option" style="cursor:default;pointer-events:none;color:var(--danger,#f87171);font-size:12px;">${escapeHtml(signalSourceChatsLoadError)}</div>`
+          : '';
+        const missingBanner =
+          selectedMissing && !signalSourceChatsLoadError
+            ? `<div class="chat-option" style="cursor:default;pointer-events:none;color:var(--muted);font-size:12px;">Обраний чат не знайдено в каталозі — натисніть «Оновити».</div>`
+            : '';
+        const emptyHint =
+          !signalSourceChatsLoadError && fullRecent.length === 0
+            ? `<div class="chat-option" style="cursor:default;pointer-events:none;color:var(--muted);font-size:12px;">У каталозі ще немає чатів. Надішліть повідомлення в Signal — запис з’явиться після оновлення каталогу.</div>`
+            : '';
+        const options = list
           .map((c) => {
-            const title = c.manualLabel || c.displayName || 'Невідомий чат';
-            const typeLabel = c.chatType === 'direct' ? 'direct' : 'group';
-            const lastSeen = c.lastSeenAt ? new Date(c.lastSeenAt).toLocaleString('uk-UA') : '—';
-            const preview = String(c.lastMessagePreview || '').trim();
+            const title = buildSignalDisambiguatedLabel(c, labelCounts);
+            const typeLine = escapeHtml(signalChatTypeHint(c));
+            const lastSeen = c.lastSeenAt
+              ? escapeHtml(new Date(c.lastSeenAt).toLocaleString('uk-UA'))
+              : '—';
             const selectedClass = c.chatKey === flowSelectedSourceChatKey ? ' selected' : '';
-            const base = `<div><strong>${escapeHtml(title)}</strong></div><div style="font-size:11px;color:var(--muted);margin-top:2px;">${escapeHtml(c.platform)} · ${escapeHtml(typeLabel)} · ${escapeHtml(lastSeen)}</div>`;
-            const adv = showIds ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">debug: ${escapeHtml(c.chatKey || '')}</div>` : '';
-            const p = preview ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;">${escapeHtml(preview.slice(0, 90))}</div>` : '';
-            return `<div class="chat-option${selectedClass}" data-source-chat-key="${encodeURIComponent(c.chatKey || '')}">${base}${p}${adv}</div>`;
+            const base = `<div><strong>${escapeHtml(title)}</strong></div><div style="font-size:11px;color:var(--muted);margin-top:3px;">${typeLine}</div><div style="font-size:11px;color:var(--muted);margin-top:2px;">Остання активність: ${lastSeen}</div>`;
+            return `<div class="chat-option${selectedClass}" data-source-chat-key="${encodeURIComponent(c.chatKey || '')}">${base}</div>`;
           })
           .join('');
+        dd.innerHTML = errBanner + missingBanner + emptyHint + options;
         syncSourceHiddenSelect();
         return;
       }
@@ -1690,18 +1955,22 @@
     }
 
     function openFlowModal(flow) {
+      // New modal session: invalidate any in-flight async work from previous open.
+      flowModalSession = Date.now();
+      chatsLoadSession = 0;
+      signalSourceChatsLoadError = '';
       document.getElementById('flowModalTitle').textContent = flow ? 'Змінити автоматизацію' : 'Нова автоматизація';
       document.getElementById('flowId').value = flow ? flow.id : '';
       document.getElementById('flowName').value = flow ? flow.name : '';
-      document.getElementById('flowKeywords').value = flow ? (flow.keywords || '') : '';
+      document.getElementById('flowKeywords').value = flow ? (flow.keywords || '') : '*';
       document.getElementById('flowFrequencies').value = flow ? (flow.frequencies || '') : '';
       if (flow) {
         rememberFlowChatRefs([flow]);
       }
       const srcSel = document.getElementById('flowSourcePlatform');
       const tgtSel = document.getElementById('flowTargetPlatform');
-      if (srcSel) srcSel.value = flow ? (flow.sourcePlatform || 'whatsapp') : 'whatsapp';
-      if (tgtSel) tgtSel.value = flow ? (flow.targetPlatform || (flow.direction === 'wa_wa' ? 'whatsapp' : 'fastapi')) : 'fastapi';
+      if (srcSel) srcSel.value = flow ? (flow.sourcePlatform || 'whatsapp') : 'signal';
+      if (tgtSel) tgtSel.value = flow ? (flow.targetPlatform || (flow.direction === 'wa_wa' ? 'whatsapp' : 'fastapi')) : 'whatsapp';
       const sendAtt = document.getElementById('flowSendAttachments');
       if (sendAtt) sendAtt.checked = flow ? Boolean(flow.sendAttachments) : false;
       flowSelectedSourceIds = new Set(flow ? sourceList(flow) : []);
@@ -1710,15 +1979,45 @@
       toggleFlowDirectionUi();
       renderSourcePicker();
       renderTargetPicker();
-      loadChats().then(() => {
+      const advEl = document.getElementById('flowSourceSignalAdvanced');
+      // debug section removed
+      loadChats().then(async () => {
+        const localModalSession = flowModalSession;
         renderSourcePicker();
         renderTargetPicker();
+        if (flow && flow.sourcePlatform === 'signal' && !flowSelectedSourceChatKey && flow.id) {
+          try {
+            const res = await fetch(
+              '/api/chat-directory/resolve-source?flowId=' + encodeURIComponent(flow.id),
+              { credentials: 'same-origin' }
+            );
+            if (flowModalSession !== localModalSession) return;
+            if (res.status === 401) {
+              window.location.href = '/login.html';
+              return;
+            }
+            const data = await res.json();
+            if (data.ok && data.chatKey) flowSelectedSourceChatKey = data.chatKey;
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        ensureSignalPickerRowForEditingFlow(flow);
+        renderSourcePicker();
+        // debug section removed
       });
       document.getElementById('flowModal').classList.add('open');
     }
 
     function closeFlowModal() {
       document.getElementById('flowModal').classList.remove('open');
+      // Invalidate sessions and abort in-flight requests.
+      flowModalSession = 0;
+      chatsLoadSession = 0;
+      for (const ctl of chatsAbortByKey.values()) {
+        try { ctl.abort(); } catch (_) { /* ignore */ }
+      }
+      chatsAbortByKey.clear();
     }
 
     async function submitFlow(ev) {
@@ -1729,7 +2028,7 @@
       const sel = document.getElementById('flowSources');
       const sourceChatIds = Array.from(flowSelectedSourceIds || []);
       if (sourcePlatform === 'signal' && !flowSelectedSourceChatKey) {
-        alert('Оберіть чат-джерело Signal зі списку recent.');
+        alert('Оберіть вихідний чат Signal зі списку каталогу (або перевірте помилку завантаження вище).');
         return;
       }
       if (sourcePlatform !== 'signal' && sourceChatIds.length === 0) {
@@ -1744,11 +2043,35 @@
           return;
         }
       }
+      let signalSourceDisplayForSave = '';
+      let signalSourceCanonicalChatId = '';
+      if (sourcePlatform === 'signal' && flowSelectedSourceChatKey) {
+        const sk = String(flowSelectedSourceChatKey).trim();
+        const row = (recentSourceChatsByPlatform.signal || []).find(
+          (x) => String(x.chatKey || '') === sk
+        );
+        signalSourceDisplayForSave = row
+          ? getDisplayLabel(row)
+          : getSignalFlowRefNameForChatKey(sk, getEditingFlowId()) || '';
+        signalSourceCanonicalChatId = row ? String(row.chatId || '').trim() : '';
+        // Do not hard-block save when canonical id is temporarily unresolved.
+        // Flow routing uses sourceChatKey, so user can still save and proceed.
+        if (!signalSourceCanonicalChatId) {
+          setFlowStatusFor(
+            'source',
+            'error',
+            'Не вдалося визначити канонічний chatId для Signal. Збереження виконується по sourceChatKey; натисніть "Оновити" пізніше для синхронізації id.'
+          );
+        }
+      }
       const body = {
         name: document.getElementById('flowName').value.trim(),
         sourceChatKey: sourcePlatform === 'signal' ? flowSelectedSourceChatKey : null,
-        sourceChatIds: sourcePlatform === 'signal' ? [] : sourceChatIds,
-        sourceChatRefs: sourcePlatform === 'signal' ? [] : sourceChatIds.map((id) => ({ id, name: chatLabelById(id) })),
+        sourceChatIds: sourcePlatform === 'signal' && signalSourceCanonicalChatId ? [signalSourceCanonicalChatId] : sourceChatIds,
+        sourceChatRefs:
+          sourcePlatform === 'signal' && flowSelectedSourceChatKey
+            ? [{ id: signalSourceCanonicalChatId || flowSelectedSourceChatKey, name: signalSourceDisplayForSave }]
+            : sourceChatIds.map((id) => ({ id, name: chatLabelById(id) })),
         sourcePlatform,
         targetPlatform,
         keywords: document.getElementById('flowKeywords').value,
@@ -1758,6 +2081,7 @@
         targetChatId,
         targetChatRef: targetChatId ? { id: targetChatId, name: chatLabelById(targetChatId) } : null
       };
+      console.log('[FLOW SUBMIT BODY]', JSON.stringify(body, null, 2));
       const url = id ? '/api/flows/' + encodeURIComponent(id) : '/api/flows';
       const method = id ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -1781,9 +2105,25 @@
     }
 
     async function editFlow(id) {
-      const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
-      const f = (st.flows || []).find((x) => x.id === id);
-      if (f) openFlowModal(f);
+      try {
+        const res = await fetch('/api/state', { credentials: 'same-origin' });
+        if (res.status === 401) {
+          window.location.href = '/login.html';
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Не вдалося отримати стан сервісу (HTTP ' + res.status + ')');
+        }
+        const st = await res.json();
+        const f = (st.flows || []).find((x) => x.id === id);
+        if (!f) {
+          alert('Автоматизацію не знайдено. Спробуйте оновити сторінку.');
+          return;
+        }
+        openFlowModal(f);
+      } catch (e) {
+        alert(e?.message || 'Не вдалося відкрити редагування автоматизації.');
+      }
     }
 
     function bindFlowListClicks() {
@@ -1938,7 +2278,18 @@
         groupsToggle.checked = getShowOnlyGroups();
         groupsToggle.onchange = async () => {
           setShowOnlyGroups(groupsToggle.checked);
-          await loadChats();
+          // Changing this setting affects both dropdowns and card labels.
+          // Invalidate caches so next modal open / refresh uses correct server filter.
+          chatsCacheByPlatform = { whatsapp: [], signal: [] };
+          chatsCacheAtByPlatform = { whatsapp: 0, signal: 0 };
+          chatsCacheOnlyGroupsByPlatform = { whatsapp: null, signal: null };
+          recentSourceChatsByPlatform = { whatsapp: [], signal: recentSourceChatsByPlatform.signal || [] };
+          // If modal is open, refresh visible pickers immediately; otherwise just rerender flow cards.
+          if (flowModalSession !== 0) {
+            await loadChats(true);
+          } else {
+            renderFlowList(cachedFlowsSnapshot);
+          }
         };
       }
       const meRes = await fetch('/api/panel-auth/me', { credentials: 'same-origin' });
@@ -1960,6 +2311,7 @@
         sourceSel.addEventListener('change', async () => {
           flowSelectedSourceIds = new Set();
           flowSelectedSourceChatKey = '';
+          signalSourceChatsLoadError = '';
           toggleFlowDirectionUi();
           await loadChats(false);
         });
@@ -1978,6 +2330,10 @@
         sourceSearch.addEventListener('focus', () => {
           document.getElementById('flowSourcesDropdown')?.classList.add('open');
         });
+        sourceSearch.addEventListener('click', () => {
+          document.getElementById('flowSourcesDropdown')?.classList.add('open');
+          renderSourcePicker();
+        });
       }
       if (targetSearch) {
         targetSearch.addEventListener('input', () => {
@@ -1993,15 +2349,30 @@
         chipsBox.addEventListener('click', (e) => {
           const byKey = e.target.closest('button[data-source-chat-key-remove]');
           if (byKey) {
+            e.preventDefault();
             flowSelectedSourceChatKey = '';
             renderSourcePicker();
+            refreshFlowSourceAliasesDebug();
             return;
           }
           const btn = e.target.closest('button[data-chip-id]');
           if (!btn) return;
+          e.preventDefault();
           const id = decodeURIComponent(btn.getAttribute('data-chip-id') || '');
           if (!id) return;
           flowSelectedSourceIds.delete(id);
+          renderSourcePicker();
+        });
+      }
+
+      const srcPicker = document.getElementById('flowSourcesPicker');
+      if (srcPicker && !srcPicker.dataset.boundClickOpen) {
+        srcPicker.dataset.boundClickOpen = '1';
+        srcPicker.addEventListener('click', (e) => {
+          // Click anywhere in picker should open dropdown and focus input.
+          if (e.target.closest('button')) return;
+          document.getElementById('flowSourcesSearch')?.focus();
+          document.getElementById('flowSourcesDropdown')?.classList.add('open');
           renderSourcePicker();
         });
       }
@@ -2023,7 +2394,10 @@
           if (byKey) {
             const chatKey = decodeURIComponent(byKey.getAttribute('data-source-chat-key') || '');
             flowSelectedSourceChatKey = chatKey || '';
+            const srcInput = document.getElementById('flowSourcesSearch');
+            if (srcInput) srcInput.value = '';
             renderSourcePicker();
+            refreshFlowSourceAliasesDebug();
             return;
           }
           const item = e.target.closest('.chat-option[data-source-id]');
@@ -2032,6 +2406,8 @@
           if (!id) return;
           if (flowSelectedSourceIds.has(id)) flowSelectedSourceIds.delete(id);
           else flowSelectedSourceIds.add(id);
+          const srcInput = document.getElementById('flowSourcesSearch');
+          if (srcInput) srcInput.value = '';
           renderSourcePicker();
         });
       }
@@ -2043,6 +2419,8 @@
           if (!item) return;
           const id = decodeURIComponent(item.getAttribute('data-target-id') || '');
           flowTargetChatId = id || '';
+          const tgtInput = document.getElementById('flowTargetSearch');
+          if (tgtInput) tgtInput.value = '';
           renderTargetPicker();
         });
       }
@@ -2063,8 +2441,10 @@
         return;
       }
       const logs = await logsRes.json();
-      logsEl.textContent = '';
-      for (const item of logs) appendLog(item);
+      if (logsEl) {
+        logsEl.textContent = '';
+        for (const item of logs) appendLog(item);
+      }
     }
 
     function connectEvents() {
@@ -2081,7 +2461,7 @@
     initialLoad();
     connectEvents();
     bindFlowListClicks();
-    bindIntegrationSubtabs();
+    // integration subtabs removed
   </script>
 </body>
 </html>

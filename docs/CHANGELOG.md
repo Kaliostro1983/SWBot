@@ -4,6 +4,59 @@
 
 ---
 
+## 2026-03-26 — Signal chat refresh: таймаут `/chats` + статус результату в модалці
+
+- `index.cjs`: для `fetchSignalChats()` додано окремий конфігурований таймаут `SIGNAL_CHATS_TIMEOUT_MS` (default 90000), щоб `GET /api/signal/chats/refresh` рідше падав на повільному bridge.
+- `public/index.html`: після кнопки `Оновити` в модалці flow тепер показується підсумковий статус під полем (`Оновлення завершено: N чатів`, або частковий успіх з попередженням про недоступний live refresh).
+- `index.cjs`: додано debug endpoint `GET /api/chats/debug-resolve?platform=signal&chatKey=...` для діагностики мапінгу `chat-directory -> signal-chats-cache` (aliases, нормалізовані ключі, матчі по id/назві).
+
+## 2026-03-25 — Кеш списків чатів для меню + refresh по кнопці
+
+- Додано `GET /api/messenger-chats?platform=signal|whatsapp` з файловим кешем у `data/signal-chats-cache.json` та `data/whatsapp-chats-cache.json`.
+- Панель (`public/index.html`, `loadChatsForPlatform`) будує меню WA/цільових чатів із кешу; кнопка `Оновити` викликає `refresh=1` та примусово оновлює кеш із месенджера.
+- Для Signal скориговано визначення `chatType` у каталозі й фільтрацію «лише групи», щоб групи не зникали через хибну класифікацію.
+
+## 2026-03-24 — Signal picker: пріоритет підписів + збереження назви + manualLabel у каталозі
+
+- Панель (`public/index.html`): для чіпа та dropdown порядок підпису — **`manualLabel`** (каталог) → **`sourceChatRefs[0].name`** з flow (спочатку редагований, потім будь-який з тим самим `sourceChatKey`) → **`resolvedName`** з API; пошук ураховує об’єднаний підпис; якщо рядка немає в API — **синтетичний рядок** з назви flow; при збереженні передається `sourceChatRefs: [{ id: sourceChatKey, name: … }]` з людською назвою для бекенду.
+- `normalizeAutomation` (Signal + `sourceChatKey`): `sourceChatRefs[0].name` = `manualLabel || панель || старе ім’я || resolvePanelResolvedName || displayName || primary` — не підміняє людську назву на UUID, якщо вона вже є.
+- `chatDirectory.js`: **`setManualLabelIfEmpty(chatKey, label)`** — якщо в каталозі порожній `manualLabel`, після збереження flow підставляється прийнятна людська назва (не UUID / signal-group / довгий номер).
+
+## 2026-03-24 — Панель: Signal source picker з `/api/chats?platform=signal`
+
+- Форма flow (`public/index.html`): джерело Signal — autocomplete з каталогу; завантаження **`GET /api/chats?platform=signal`**; у рядку опції: **resolvedName**, підказка **Тип: особистий/група**, **Остання активність**; без прев’ю повідомлення в списку; збереження **`sourceChatKey`** (як раніше); чіп при відкритті з існуючим ключем + fallback назви з flow refs; помилки API — `#flowSourcesStatus` + рядок у dropdown; порожній каталог — пояснювальний текст; aliases лише в «Додатково (debug)».
+
+## 2026-03-24 — `GET /api/chats`: каталог для панелі + `live=1` для bridge/WA
+
+- За замовчуванням `GET /api/chats` читає **лише Chat Directory**: поля `chatKey`, `platform`, `chatType`, `displayName`, `manualLabel`, **`resolvedName`** (`resolvePanelResolvedName`, без `aliases` у відповіді), `lastSeenAt`, `lastMessagePreview`; сортування за `lastSeenAt` спадно; `listAllChatsSortedByLastSeen(platform)`; без `platform` — усі платформи; невідомий `platform` — **400**; `limit` опційно (1…10000). Стару поведінку (WA / Signal bridge) — **`live=1`**.
+- Лог каталогу: **`[API] /api/chats platform=signal count=XX`** (або `platform=all`).
+
+## 2026-03-24 — Signal source: `sourceChatKey` routing + picker / resolve-source
+
+- `flowMatchesMessage`: якщо є `sourceChatKey`, збіг лише після `chatDirectoryStore.findChatByMessage(message)` і `entry.chatKey === flow.sourceChatKey`; логи `[ROUTING] matched by sourceChatKey` / `[ROUTING] sourceChatKey mismatch` з `flowName`, `sourceChatKey`, `resolvedChatKey`, `resolvedDisplayName`. Без ключа — як раніше alias-матчинг.
+- `GET /api/chat-directory/resolve-source?flowId=`: для старих flow без `sourceChatKey` — резолв ключа з aliases проти каталогу; UI префілить пікер.
+- Міграція `inferSignalSourceChatKeyFromDirectory`: після виведення ключа заповнює порожні `sourceChatIds` / `sourceChatRefs` з запису каталогу.
+- Панель (`public/index.html`): після `loadChats` виклик `resolve-source`, бінд `<details id="flowSourceSignalAdvanced">` → оновлення debug aliases; чіп джерела шукає підпис і в повному recent-списку (не лише у відфільтрованому пошуком).
+
+## 2026-03-24 — Signal routing: ROUTER CHECK + debug fallback flow
+
+- `findSignalFlowByIncomingCandidates`: лог `[ROUTER CHECK]` (`text`, `chatId`, `platform`, `flowsCount`); якщо жоден signal-flow не матчиться за джерелом, використовується запис `debug_signal` з `debugCatchAllSignal: true` (див. `data/flows.json`), ціль — той самий `targetChatId`, що й у основному flow (замініть за потреби).
+
+## 2026-03-24 — Chat Directory: діагностика skip / тимчасово лише Signal
+
+- Логи skip: `[CHAT-DIR] skipped message` з `platform`, `reason` (`empty_text`, `text_too_short`, `not_signal_platform`, `old_message`, `system_message`), `chatId`, `senderId`, `text` (до 40 символів), `textLength`.
+- Логи create/update: додано `platform` та `preview` (до 40 символів).
+- Тимчасовий gate: `upsertChatFromMessage` обробляє лише `platform === "signal"` (константа `SIGNAL_ONLY_UPSERT` у `chatDirectory.js`); WhatsApp не оновлює каталог, доки gate увімкнено.
+
+## 2026-03-24 — Chat Directory: лише змістовні повідомлення
+
+- `upsertChatFromMessage`: пропуск (без зміни каталогу) для `isEmptyMessage`, порожнього/короткого тексту (менше 2 символів), незмістовних системних рядків (`isMeaningfulMessage`), повідомлень старіших за 24 год від `sentAt`; лог `[CHAT-DIR] skipped message (not meaningful)` з полем `reason`.
+
+## 2026-03-24 — Chat Directory (backend intake)
+
+- `src/chat-directory/chatDirectory.js`: спрощений модуль з `loadChatDirectory` / `saveChatDirectory` (файл `data/chat-directory.json` як `{ entries: [...] }`), допоміжні `isGroupAlias`, `detectChatTypeFromAliases`, `generateNextChatKey`, `findChatByCandidates`, `mergeAliases`, `listRecentChats(platform, limit)`; upsert логує `[CHAT-DIR] created new chat` / `updated existing chat` з `chatKey`, `chatType`, `aliasesCount`.
+- Після нормалізації Signal-повідомлень (`normalizeSignalMessages`) викликається `upsertChatFromMessage` до routing; дубльований upsert у `processSignalIncomingMessage` прибрано. WhatsApp intake лишає upsert у `message_create` до match flow (routing не змінювався).
+
 ## 2026-03-24 — 1.0: реліз після фіксації змін
 
 - Версія збірки: `VERSION` **1.0**, `package.json` / `package-lock.json` — **1.0.0**.

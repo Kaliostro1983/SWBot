@@ -11,11 +11,13 @@ function normalizeChatId(chatId) {
 
   let id = chatId.trim().toLowerCase();
 
-  // Signal іноді дає group.v2..., group....
-  id = id.replace(/^group\./, 'group:');
+  // Canonicalize Signal group ids to "group.<id>" (UI + classification rule depends on this).
+  if (id.startsWith('group:')) id = 'group.' + id.slice(6);
+  // Clean up duplicates
+  id = id.replace(/^group\.group\./, 'group.');
 
-  // прибираємо дублікати форматів
-  id = id.replace(/^group:group:/, 'group:');
+  // Also normalize "group.v2..." prefix to "group." (keep as group.*)
+  if (id.startsWith('group.v2')) id = id.replace(/^group\.v2/, 'group');
 
   return id;
 }
@@ -26,7 +28,9 @@ function withPrefix(id) {
   if (!normalized) return null;
 
   if (normalized.startsWith('+')) return `phone:${normalized}`;
-  if (/^[0-9a-f-]{36}$/i.test(normalized)) return `signal-group:${normalized}`;
+  // UUID-like IDs may represent direct contacts in Signal; do NOT treat them as groups.
+  if (/^[0-9a-f-]{36}$/i.test(normalized)) return `signal:${normalized}`;
+  if (normalized.startsWith('group.')) return `signal-group:${normalized.slice(6)}`;
 
   return normalized;
 }

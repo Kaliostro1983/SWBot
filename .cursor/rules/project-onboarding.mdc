@@ -18,13 +18,12 @@ Before implementing changes, read these files in order:
 
 ## Working conventions
 
+- **Routing freeze:** do not change message routing / flow matching (e.g. `flowMatchesMessage`, `sourceChatKey` vs aliases, Signal/WA source match) unless the user explicitly asks to modify routing.
 - Keep changes focused on requested scope; avoid unrelated refactors.
 - Update docs when behavior changes:
   - `docs/CHANGELOG.md` (what changed)
   - `docs/STATUS_CONTEXT.md` (current state / next actions)
-- After each completed stage, bump versions:
-  - `VERSION` by `+0.1`
-  - align `package.json` and `package-lock.json`.
+- **Version bumps (`VERSION`, `package.json`, `package-lock.json`):** do **not** change these unless the user explicitly asks to record/fix the release (**e.g. «зафіксуй зміни»**). Otherwise leave version numbers unchanged.
 
 ## Signal-specific notes
 

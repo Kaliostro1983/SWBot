@@ -26,6 +26,7 @@ const SOURCE_FILTER_FREQUENCIES = String(process.env.SOURCE_FILTER_FREQUENCIES |
 const SIGNAL_API_URL = String(process.env.SIGNAL_API_URL || '').trim();
 const SIGNAL_POLL_MS = Number(process.env.SIGNAL_POLL_MS || 5000);
 const SIGNAL_LINK_TIMEOUT_MS = Math.max(30000, Number(process.env.SIGNAL_LINK_TIMEOUT_MS || 120000));
+const SIGNAL_CHATS_TIMEOUT_MS = Math.max(30000, Number(process.env.SIGNAL_CHATS_TIMEOUT_MS || 90000));
 const SIGNAL_LINK_ALLOW_DOCKER_FALLBACK = String(
   process.env.SIGNAL_LINK_ALLOW_DOCKER_FALLBACK || '0'
 ).trim() === '1';
@@ -55,6 +56,45 @@ const DATA_DIR = path.join(ROOT_DIR, 'data');
 const FLOWS_FILE = path.join(DATA_DIR, 'flows.json');
 const PANEL_AUTH_FILE = path.join(DATA_DIR, 'panel-auth.json');
 const VERSION_FILE = path.join(ROOT_DIR, 'VERSION');
+const SIGNAL_CHATS_CACHE_FILE = path.join(DATA_DIR, 'signal-chats-cache.json');
+const WHATSAPP_CHATS_CACHE_FILE = path.join(DATA_DIR, 'whatsapp-chats-cache.json');
+const MESSENGER_CHATS_CACHE_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.MESSENGER_CHATS_CACHE_TTL_MS || 30 * 60 * 1000)
+);
+
+function safeFileStamp() {
+  // Windows-safe timestamp for filenames.
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function rotateAndClearFile(filePath) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    if (fs.existsSync(filePath)) {
+      const stat = fs.statSync(filePath);
+      if (stat.isFile() && stat.size > 0) {
+        const ext = path.extname(filePath);
+        const base = filePath.slice(0, -ext.length);
+        const rotated = `${base}.${safeFileStamp()}${ext || '.log'}`;
+        try {
+          fs.renameSync(filePath, rotated);
+        } catch {
+          // If rename fails (e.g. locked), fall back to truncation.
+        }
+      }
+    }
+    // Ensure current session starts with an empty file.
+    fs.writeFileSync(filePath, '', 'utf8');
+  } catch {
+    // Never break startup because of log rotation.
+  }
+}
+
+function clearLogsOnStartup() {
+  rotateAndClearFile(LOG_FILE);
+  rotateAndClearFile(SIGNAL_RAW_LOG_FILE);
+}
 
 function readAppVersion() {
   try {
@@ -133,13 +173,37 @@ function looksTechnicalChatName(id, name) {
 function upsertChatDirectory(platform, chats) {
   if (!['whatsapp', 'signal'].includes(String(platform || ''))) return;
   for (const c of Array.isArray(chats) ? chats : []) {
-    const id = String(c?.id || '').trim();
+    const rawId = String(c?.id || '').trim();
     const name = String(c?.name || '').trim();
+    if (!rawId) continue;
+    const id = String(normalizeChatId(rawId) || rawId).trim();
     if (!id) continue;
+
+    const candidates = [id];
+    const isSignal = String(platform) === 'signal';
+    const isSignalGroup = isSignal ? looksLikeSignalGroupId(id) : false;
+    const chatType = isSignal ? (isSignalGroup ? 'group' : 'direct') : '';
+
+    if (isSignal && isSignalGroup) {
+      // For groups, include base-id candidate too (for incoming messages that may omit prefix).
+      candidates.push(id.slice(6));
+      // If rawId was group.group.X (double-encoded), decode X to get the actual group ID
+      // that arrives in incoming messages (group.{decoded_X}).
+      if (rawId.toLowerCase().startsWith('group.group.')) {
+        const innerPayload = rawId.slice('group.group.'.length).trim();
+        try {
+          const decoded = Buffer.from(innerPayload, 'base64').toString().trim();
+          if (decoded && decoded !== innerPayload) {
+            candidates.push(`group.${decoded}`.toLowerCase());
+            candidates.push(decoded.toLowerCase());
+          }
+        } catch { /* ignore */ }
+      }
+    }
     const found = chatDirectoryStore.findChatByMessage({
       platform,
       chatId: id,
-      chatCandidates: [id]
+      chatCandidates: candidates
     });
     const existingName = String(found?.displayName || '').trim();
     const existingManual = String(found?.manualLabel || '').trim();
@@ -151,10 +215,41 @@ function upsertChatDirectory(platform, chats) {
       platform,
       chatId: id,
       chatName: nextName || existingManual || existingName || name,
-      text: ''
+      chatType,
+      // Ensure chat-list refresh contributes a stable preview and passes "empty text" filters.
+      text: name || '[sync]'
     });
     if (res?.entry?.chatKey) {
-      chatDirectoryStore.addAliasesToChat(res.entry.chatKey, [id]);
+      const aliasesToAdd = [id];
+      if (isSignal && isSignalGroup) {
+        // Ensure base id is also present for matching.
+        aliasesToAdd.push(id.slice(6));
+        // Add decoded alias for double-encoded group IDs (group.group.X → group.{decoded(X)}).
+        if (rawId.toLowerCase().startsWith('group.group.')) {
+          const innerPayload = rawId.slice('group.group.'.length).trim();
+          try {
+            const decoded = Buffer.from(innerPayload, 'base64').toString().trim();
+            if (decoded && decoded !== innerPayload) {
+              aliasesToAdd.push(`group.${decoded}`.toLowerCase());
+              aliasesToAdd.push(decoded.toLowerCase());
+            }
+          } catch { /* ignore */ }
+        }
+      } else if (isSignal && !isSignalGroup) {
+        // Cleanup: older imports mistakenly added group-aliases to direct chats, which breaks chatType.
+        try {
+          chatDirectoryStore.removeAliasesFromChat(res.entry.chatKey, [
+            `group.${id}`,
+            `group:${id}`,
+            `signal-group:${id}`,
+            `signal-group:group.${id}`,
+            `signal-group:group:${id}`
+          ]);
+        } catch {
+          // Never break refresh path on cleanup.
+        }
+      }
+      chatDirectoryStore.addAliasesToChat(res.entry.chatKey, aliasesToAdd);
     }
   }
 }
@@ -177,6 +272,21 @@ function pickPreferredChatName(platform, id, currentName) {
   const n = String(currentName || '').trim();
   if (n && !looksTechnicalChatName(id, n)) return n;
   return '';
+}
+
+function applyFlowManualLabelsToDirectory(flow) {
+  try {
+    const f = flow || {};
+    if (String(f.sourcePlatform || '') !== 'signal') return;
+    const chatKey = String(f.sourceChatKey || '').trim();
+    if (!chatKey) return;
+    const name = String(f.sourceChatRefs?.[0]?.name || '').trim();
+    if (!name) return;
+    // Never overwrite existing manualLabel; only fill when empty and non-technical.
+    chatDirectoryStore.setManualLabelIfEmpty(chatKey, name);
+  } catch {
+    /* must never break flow save/load */
+  }
 }
 
 function normalizeAliases(rawAliases) {
@@ -203,6 +313,24 @@ function buildSignalAliasList(id, rawAliases = []) {
   return out;
 }
 
+/**
+ * Вибирає "головний" аліас для Signal-чату з директорії.
+ * Для груп надає перевагу аліасу з префіксом group. перед UUID/phone.
+ * Це запобігає збереженню UUID як sourceChatId, коли реальні повідомлення
+ * приходять з group.<base64>-ідентифікатором.
+ */
+function pickSignalPrimaryAlias(aliases) {
+  const list = Array.isArray(aliases) ? aliases.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  // Пріоритет 1: group.<base64> — саме такий chatId приходить у реальних повідомленнях
+  const groupAlias = list.find((a) => a.startsWith('group.') && !a.startsWith('group.signal') && !a.startsWith('group.phone'));
+  if (groupAlias) return groupAlias;
+  // Пріоритет 2: phone:+... або +... для прямих чатів
+  const phoneAlias = list.find((a) => a.startsWith('+') || a.startsWith('phone:+'));
+  if (phoneAlias) return phoneAlias;
+  // Fallback: перший доступний
+  return list[0] || '';
+}
+
 function getFlowSignalSourceAliases(flow) {
   const aliases = new Set();
   const refs = Array.isArray(flow?.sourceChatRefs) ? flow.sourceChatRefs : [];
@@ -219,24 +347,36 @@ function flowMatchesMessage(flow, message) {
   const messageCandidates = new Set(buildChatCandidates(message));
   const flowSourceChatKey = String(flow?.sourceChatKey || '').trim();
   const flowAliases = new Set(buildFlowAliases(flow));
-  const flowName = flow?.name || flow?.id || 'unnamed-flow';
+  const flowId = String(flow?.id || '').trim() || 'unknown-flow';
+  const flowName = String(flow?.name || '').trim() || flowId;
+  const platform = String(message?.platform || '').trim() || 'unknown';
+  const resolvedEntry = chatDirectoryStore.findChatByMessage(message);
+  const incomingChatKey = resolvedEntry?.chatKey ? String(resolvedEntry.chatKey).trim() : null;
 
   if (flowSourceChatKey) {
-    const sourceChat = chatDirectoryStore.getChatByKey(flowSourceChatKey);
-    const sourceAliases = new Set(Array.isArray(sourceChat?.aliases) ? sourceChat.aliases : []);
-    for (const alias of sourceAliases) {
-      if (messageCandidates.has(alias)) {
-        console.log('[ROUTING] flow matched by sourceChatKey', {
-          flowName,
-          sourceChatKey: flowSourceChatKey,
-          matchedBy: alias
-        });
-        return {
-          matched: true,
-          matchedBy: alias
-        };
-      }
+    if (incomingChatKey && incomingChatKey === flowSourceChatKey) {
+      console.log('[ROUTING]', {
+        platform,
+        incomingChatKey,
+        expectedSourceChatKey: flowSourceChatKey,
+        flowId,
+        flowName,
+        result: 'matched'
+      });
+      return {
+        matched: true,
+        matchedBy: flowSourceChatKey
+      };
     }
+
+    console.log('[ROUTING]', {
+      platform,
+      incomingChatKey,
+      expectedSourceChatKey: flowSourceChatKey,
+      flowId,
+      flowName,
+      result: 'skipped'
+    });
     return {
       matched: false,
       matchedBy: null
@@ -244,8 +384,13 @@ function flowMatchesMessage(flow, message) {
   }
 
   if (flowAliases.size === 0) {
-    console.warn('[ROUTING] flow has no aliases', {
-      flowName
+    console.warn('[ROUTING]', {
+      platform,
+      incomingChatKey,
+      expectedSourceChatKey: null,
+      flowId,
+      flowName,
+      result: 'skipped'
     });
     return {
       matched: false,
@@ -255,11 +400,13 @@ function flowMatchesMessage(flow, message) {
 
   for (const alias of flowAliases) {
     if (messageCandidates.has(alias)) {
-      console.log('[ROUTING] matched source chat', {
+      console.log('[ROUTING]', {
+        platform,
+        incomingChatKey,
+        expectedSourceChatKey: null,
+        flowId,
         flowName,
-        matchedBy: alias,
-        flowAliases: Array.from(flowAliases),
-        messageCandidates: Array.from(messageCandidates)
+        result: 'matched'
       });
       return {
         matched: true,
@@ -268,10 +415,13 @@ function flowMatchesMessage(flow, message) {
     }
   }
 
-  console.log('[ROUTING] source chat mismatch', {
+  console.log('[ROUTING]', {
+    platform,
+    incomingChatKey,
+    expectedSourceChatKey: null,
+    flowId,
     flowName,
-    flowAliases: Array.from(flowAliases),
-    messageCandidates: Array.from(messageCandidates)
+    result: 'skipped'
   });
   return {
     matched: false,
@@ -360,7 +510,7 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
   state.signal.autoRemapInFlight = true;
   state.signal.lastAutoRemapAtTs = now;
   try {
-    const signalEntries = chatDirectoryStore.listRecentChats('signal');
+    const signalEntries = chatDirectoryStore.listRecentChats('signal', 10000);
     const signalDict = {};
     for (const entry of signalEntries) {
       const label = String(entry?.manualLabel || entry?.displayName || '').trim();
@@ -428,11 +578,45 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
 }
 
 function findSignalFlowByIncomingCandidates(message) {
-  return flows.find((f) => {
+  console.log('[ROUTER CHECK]', {
+    text: message.text,
+    chatId: message.chatId,
+    platform: message.platform,
+    flowsCount: flows.length
+  });
+  const matched = flows.find((f) => {
     const p = inferPlatforms(f);
     if (p.sourcePlatform !== 'signal') return false;
+    if (f.debugCatchAllSignal === true) return false;
+    // Primary rule for Signal routing: sourceChatKey is required.
+    if (!String(f?.sourceChatKey || '').trim()) {
+      console.warn('[ROUTING]', {
+        platform: 'signal',
+        incomingChatKey: chatDirectoryStore.findChatByMessage(message)?.chatKey || null,
+        expectedSourceChatKey: null,
+        flowId: String(f?.id || '').trim() || 'unknown-flow',
+        flowName: String(f?.name || '').trim() || String(f?.id || '').trim() || 'unknown-flow',
+        result: 'skipped'
+      });
+      return false;
+    }
     return flowMatchesMessage(f, message).matched;
   });
+  if (matched) return matched;
+  const debugFallback = flows.find(
+    (f) => f.id === 'debug_signal' && f.debugCatchAllSignal === true && !f.paused
+  );
+  if (debugFallback) {
+    console.log('[ROUTER CHECK]', {
+      text: message.text,
+      chatId: message.chatId,
+      platform: message.platform,
+      flowsCount: flows.length,
+      matchedFallback: 'debug_signal'
+    });
+    return debugFallback;
+  }
+  return undefined;
 }
 
 function generateFlowId() {
@@ -494,28 +678,39 @@ function textMatchesFilterTokens(rawText, fieldValue) {
   return tokens.some((t) => hay.includes(String(t).toLowerCase()));
 }
 
+function evaluateFlowContentFilters(flow, rawMessageText) {
+  const k = String(flow?.keywords || '').trim();
+  const f = String(flow?.frequencies || '').trim();
+  const tokK = splitFilterTokens(k);
+  const tokF = splitFilterTokens(f);
+  if (flowSkipsContentFilters(flow)) {
+    return { passed: true, reason: 'wildcard', tokK, tokF };
+  }
+  // Contract: if both filter fields are empty -> allow message.
+  if (tokK.length === 0 && tokF.length === 0) {
+    return { passed: true, reason: 'empty_filters', tokK, tokF };
+  }
+  if (tokK.length > 0 && tokF.length === 0) {
+    const ok = textMatchesFilterTokens(rawMessageText, k);
+    return { passed: ok, reason: ok ? 'keywords_match' : 'keywords_miss', tokK, tokF };
+  }
+  if (tokK.length === 0 && tokF.length > 0) {
+    const ok = textMatchesFilterTokens(rawMessageText, f);
+    return { passed: ok, reason: ok ? 'frequencies_match' : 'frequencies_miss', tokK, tokF };
+  }
+  const ok =
+    textMatchesFilterTokens(rawMessageText, k) ||
+    textMatchesFilterTokens(rawMessageText, f);
+  return { passed: ok, reason: ok ? 'keywords_or_frequencies_match' : 'keywords_or_frequencies_miss', tokK, tokF };
+}
+
 /**
  * Хоча б одне поле має містити токени.
  * Лише ключові слова або лише частоти — збіг по відповідному полю.
  * Обидва з токенами — достатньо збігу по тексту АБО по частотах (підрядки в повному тексті повідомлення).
  */
 function passesFlowContentFilters(flow, rawMessageText) {
-  if (flowSkipsContentFilters(flow)) return true;
-  const k = String(flow.keywords || '').trim();
-  const f = String(flow.frequencies || '').trim();
-  const tokK = splitFilterTokens(k);
-  const tokF = splitFilterTokens(f);
-  if (tokK.length === 0 && tokF.length === 0) return false;
-  if (tokK.length > 0 && tokF.length === 0) {
-    return textMatchesFilterTokens(rawMessageText, k);
-  }
-  if (tokK.length === 0 && tokF.length > 0) {
-    return textMatchesFilterTokens(rawMessageText, f);
-  }
-  return (
-    textMatchesFilterTokens(rawMessageText, k) ||
-    textMatchesFilterTokens(rawMessageText, f)
-  );
+  return evaluateFlowContentFilters(flow, rawMessageText).passed;
 }
 
 function migrateFlowRecord(f) {
@@ -544,12 +739,6 @@ function migrateFlowRecord(f) {
   if (out.analysisPlugin === undefined) out.analysisPlugin = null;
   if (out.outdatedDiff === undefined) out.outdatedDiff = null;
   if (out.paused === undefined) out.paused = false;
-  if (
-    splitFilterTokens(String(out.keywords || '')).length === 0 &&
-    splitFilterTokens(String(out.frequencies || '')).length === 0
-  ) {
-    out.keywords = '*';
-  }
   if (!Array.isArray(out.sourceChatRefs)) {
     out.sourceChatRefs = getSourceIds(out).map((id) => ({
       id,
@@ -594,7 +783,43 @@ function migrateFlowRecord(f) {
   } else {
     out.targetChatRef = null;
   }
-  return out;
+  return inferSignalSourceChatKeyFromDirectory(out);
+}
+
+function resolveSignalSourceChatKeyFromFlowAliases(flow) {
+  if (String(flow?.sourcePlatform) !== 'signal') return null;
+  if (String(flow?.sourceChatKey || '').trim()) return String(flow.sourceChatKey).trim();
+  const set = getFlowSignalSourceAliases(flow);
+  if (set.size === 0) return null;
+  const entries = chatDirectoryStore.listRecentChats('signal', 5000);
+  for (const e of entries) {
+    for (const a of e.aliases || []) {
+      const s = String(a || '').trim();
+      if (s && set.has(s)) return String(e.chatKey || '').trim() || null;
+    }
+  }
+  return null;
+}
+
+function inferSignalSourceChatKeyFromDirectory(flow) {
+  const key = resolveSignalSourceChatKeyFromFlowAliases(flow);
+  if (!key) return flow;
+  const next = { ...flow, sourceChatKey: key };
+  const entry = chatDirectoryStore.getChatByKey(key);
+  const aliases = Array.isArray(entry?.aliases) ? entry.aliases.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  const primary = pickSignalPrimaryAlias(aliases);
+  if (primary && (!Array.isArray(next.sourceChatIds) || next.sourceChatIds.length === 0)) {
+    next.sourceChatIds = [primary];
+    next.sourceChatId = primary;
+    next.sourceChatRefs = [
+      {
+        id: primary,
+        name: String(entry.manualLabel || entry.displayName || primary).trim(),
+        aliases: buildSignalAliasList(primary, aliases)
+      }
+    ];
+  }
+  return next;
 }
 
 function loadAndMigrateFlows() {
@@ -604,6 +829,7 @@ function loadAndMigrateFlows() {
     const before = JSON.stringify(f);
     const m = migrateFlowRecord(f);
     if (before !== JSON.stringify(m)) needsSave = true;
+    applyFlowManualLabelsToDirectory(m);
     return m;
   });
   if (needsSave && migrated.length > 0) {
@@ -703,30 +929,75 @@ function normalizeAutomation(body, existingId) {
     }
   }
   const refsById = new Map(sourceChatRefs.map((r) => [r.id, { name: r.name || r.id, aliases: r.aliases || [] }]));
-  if (sourcePlatform === 'signal' && sourceChatKey) {
+  let signalKeyHydrated = false;
+  // For Signal, keep canonical chatId provided by UI selection.
+  // Hydrate from directory aliases only when legacy payload has no sourceChatIds.
+  if (sourcePlatform === 'signal' && sourceChatKey && sourceChatIds.length === 0) {
     const sourceEntry = chatDirectoryStore.getChatByKey(sourceChatKey);
     if (sourceEntry) {
-      const aliases = Array.isArray(sourceEntry.aliases) ? sourceEntry.aliases.map((x) => String(x || '').trim()).filter(Boolean) : [];
-      const primary = aliases[0] || '';
-      if (primary) {
-        sourceChatIds = [primary];
-      }
-      sourceChatRefs = primary
-        ? [
-            {
-              id: primary,
-              name: String(sourceEntry.manualLabel || sourceEntry.displayName || primary).trim(),
-              aliases: sourcePlatform === 'signal' ? buildSignalAliasList(primary, aliases) : []
-            }
-          ]
+      const aliases = Array.isArray(sourceEntry.aliases)
+        ? sourceEntry.aliases.map((x) => String(x || '').trim()).filter(Boolean)
         : [];
+      const primary = pickSignalPrimaryAlias(aliases);
+      if (primary) {
+        const dirManual = String(sourceEntry.manualLabel || '').trim();
+        const dirDisplay = String(sourceEntry.displayName || '').trim();
+        const panelRefName = String(body.sourceChatRefs?.[0]?.name || '').trim();
+        const existingRefName = String(ex?.sourceChatRefs?.[0]?.name || '').trim();
+        const resolved = String(chatDirectoryStore.resolvePanelResolvedName(sourceEntry) || '').trim();
+        const refName =
+          dirManual ||
+          panelRefName ||
+          existingRefName ||
+          resolved ||
+          dirDisplay ||
+          primary;
+        sourceChatIds = [primary];
+        sourceChatRefs = [
+          {
+            id: primary,
+            name: refName,
+            aliases: buildSignalAliasList(primary, aliases)
+          }
+        ];
+        signalKeyHydrated = true;
+        if (!dirManual) {
+          chatDirectoryStore.setManualLabelIfEmpty(sourceChatKey, refName);
+        }
+      }
     }
   }
-  sourceChatRefs = sourceChatIds.map((id) => ({
-    id,
-    name: pickPreferredChatName(sourcePlatform, id, refsById.get(id)?.name || '') || id,
-    aliases: sourcePlatform === 'signal' ? buildSignalAliasList(id, refsById.get(id)?.aliases || []) : []
-  }));
+  if (!signalKeyHydrated) {
+    sourceChatRefs = sourceChatIds.map((id) => ({
+      id,
+      name: pickPreferredChatName(sourcePlatform, id, refsById.get(id)?.name || '') || id,
+      aliases: sourcePlatform === 'signal' ? buildSignalAliasList(id, refsById.get(id)?.aliases || []) : []
+    }));
+  }
+
+  // Перехресна валідація для Signal: якщо sourceChatKey не відповідає sourceChatIds —
+  // перерезолвити ключ через директорію щоб уникнути розбіжності між UI-вибором і реальним chatId.
+  if (sourcePlatform === 'signal' && sourceChatKey && sourceChatIds.length > 0) {
+    const keyEntry = chatDirectoryStore.getChatByKey(sourceChatKey);
+    if (keyEntry) {
+      const keyAliases = new Set(
+        (Array.isArray(keyEntry.aliases) ? keyEntry.aliases : [])
+          .map((x) => String(x || '').trim().toLowerCase())
+          .filter(Boolean)
+      );
+      const idMatchesKey = sourceChatIds.some((id) => {
+        const norm = String(id || '').trim().toLowerCase();
+        return keyAliases.has(norm) || keyAliases.has(`group.${norm}`) || keyAliases.has(norm.replace(/^group\./, ''));
+      });
+      if (!idMatchesKey) {
+        // sourceChatKey вказує на інший чат ніж sourceChatIds — перерезолвити ключ з директорії
+        const resolvedKey = resolveSignalSourceChatKeyFromFlowAliases({ sourcePlatform, sourceChatKey: '', sourceChatIds, sourceChatRefs });
+        if (resolvedKey && resolvedKey !== sourceChatKey) {
+          sourceChatKey = resolvedKey;
+        }
+      }
+    }
+  }
   if (targetChatId) {
     const preferredTargetName = pickPreferredChatName(targetPlatform, targetChatId, targetChatRef?.name) || targetChatId;
     if (!targetChatRef || targetChatRef.id !== targetChatId) {
@@ -784,13 +1055,20 @@ function validateAutomation(f, allFlows, excludeId) {
       return 'Цільовий чат не може збігатися з чатом-джерелом';
     }
   }
-  const hasKTok = splitFilterTokens(String(f.keywords || '')).length > 0;
-  const hasFTok = splitFilterTokens(String(f.frequencies || '')).length > 0;
-  if (!hasKTok && !hasFTok) {
-    return 'Заповніть хоча б одне поле: ключові слова або частоти. Окремий рядок * — пропускати все без фільтрів.';
-  }
   if (!f.paused) {
     const others = allFlows.filter((x) => x.id !== excludeId);
+    const srcKey = String(f.sourceChatKey || '').trim();
+    if (srcKey && p.sourcePlatform === 'signal') {
+      const conflictKey = others.find(
+        (o) =>
+          !o.paused &&
+          String(o.sourceChatKey || '').trim() === srcKey &&
+          inferPlatforms(o).sourcePlatform === 'signal'
+      );
+      if (conflictKey) {
+        return `Той самий chatKey джерела вже в активній автоматизації «${conflictKey.name}»`;
+      }
+    }
     for (const sid of f.sourceChatIds) {
       const conflict = others.find((o) => !o.paused && getSourceIds(o).includes(sid));
       if (conflict) {
@@ -1296,14 +1574,32 @@ async function signalApiRequest(
     throw new Error('SIGNAL_API_URL is not configured');
   }
   const url = `${SIGNAL_API_URL.replace(/\/+$/, '')}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-  const res = await axios({
-    method,
-    url,
-    data,
-    params,
-    timeout: Math.max(1000, Number(timeoutMs) || 30000)
-  });
-  return res.data;
+  const reqTimeout = Math.max(1000, Number(timeoutMs) || 30000);
+  try {
+    const res = await axios({
+      method,
+      url,
+      data,
+      params,
+      timeout: reqTimeout
+    });
+    return res.data;
+  } catch (err) {
+    const status = Number(err?.response?.status || 0) || null;
+    const code = String(err?.code || '').trim() || null;
+    const message = err?.message || String(err);
+    const e = new Error(message);
+    e.signalContext = {
+      method: String(method || '').toUpperCase(),
+      endpoint: String(endpoint || ''),
+      url,
+      status,
+      code,
+      timeoutMs: reqTimeout,
+      params: params || null
+    };
+    throw e;
+  }
 }
 
 async function signalHealthCheck(timeoutMs = 6000) {
@@ -1338,6 +1634,152 @@ function normalizeSignalChatList(raw) {
     .filter(Boolean);
 }
 
+function isWhatsAppGroupId(id) {
+  return String(id || '').trim().endsWith('@g.us');
+}
+
+function isWaTransientDetachedFrameError(error) {
+  const msg = String(error?.message || error || '').trim();
+  if (!msg) return false;
+  return (
+    msg.includes('Attempted to use detached Frame') ||
+    msg.includes('Execution context was destroyed') ||
+    msg.includes('Target closed') ||
+    msg.includes('Session closed') ||
+    msg.includes('Protocol error') ||
+    msg.includes('frame was detached')
+  );
+}
+
+function isPhoneLikeSignalId(id) {
+  return /^\+?\d{7,}$/.test(String(id || '').trim());
+}
+
+function isUuidLikeSignalId(id) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(id || '').trim()
+  );
+}
+
+function looksLikeSignalGroupId(id) {
+  const v = String(id || '').trim();
+  if (!v) return false;
+  if (v.startsWith('group.')) return true;
+  return false;
+}
+
+function cacheFileForPlatform(platform) {
+  const p = String(platform || '').trim();
+  if (p === 'signal') return SIGNAL_CHATS_CACHE_FILE;
+  if (p === 'whatsapp') return WHATSAPP_CHATS_CACHE_FILE;
+  return '';
+}
+
+function readMessengerChatsCache(platform) {
+  const file = cacheFileForPlatform(platform);
+  if (!file || !fs.existsSync(file)) return { updatedAt: null, chats: [] };
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const chats = Array.isArray(raw?.chats) ? raw.chats : Array.isArray(raw) ? raw : [];
+    const updatedAt = raw?.updatedAt ? String(raw.updatedAt) : null;
+    const out = chats
+      .map((c) => ({
+        id: String(c?.id || '').trim(),
+        name: String(c?.name || '').trim()
+      }))
+      .filter((c) => c.id);
+    return { updatedAt, chats: out };
+  } catch {
+    return { updatedAt: null, chats: [] };
+  }
+}
+
+function loadMessengerChatsCache(platform) {
+  return readMessengerChatsCache(platform).chats;
+}
+
+function cacheAgeMs(updatedAt) {
+  const ts = updatedAt ? Date.parse(String(updatedAt)) : NaN;
+  if (!Number.isFinite(ts)) return Infinity;
+  return Math.max(0, Date.now() - ts);
+}
+
+function isCacheFresh(updatedAt) {
+  return cacheAgeMs(updatedAt) <= MESSENGER_CHATS_CACHE_TTL_MS;
+}
+
+function saveMessengerChatsCache(platform, chats) {
+  const file = cacheFileForPlatform(platform);
+  if (!file) return;
+  const old = readMessengerChatsCache(platform);
+  const oldRows = old.chats || [];
+  const oldById = new Map(
+    (oldRows || [])
+      .map((r) => [String(r?.id || '').trim(), String(r?.name || '').trim()])
+      .filter((x) => x[0])
+  );
+
+  const isTechnicalCacheName = (id, name) => {
+    const n = String(name || '').trim();
+    const i = String(id || '').trim();
+    if (!n) return true;
+    if (n === i) return true;
+    if (platform === 'signal') {
+      if (/^signal-group:/i.test(n)) return true;
+      if (isUuidLikeSignalId(n)) return true;
+      if (isPhoneLikeSignalId(n)) return true;
+      if (looksLikeSignalGroupId(n)) return true;
+      if (n.length > 48) return true;
+    }
+    if (platform === 'whatsapp') {
+      if (/^[0-9a-f-]{8}-[0-9a-f-]{4}-[1-5][0-9a-f-]{3}-[89ab][0-9a-f-]{3}-[0-9a-f-]{12}$/i.test(n)) return true;
+      if (n.length > 64) return true;
+    }
+    return false;
+  };
+
+  const rowsRaw = (Array.isArray(chats) ? chats : [])
+    .map((c) => {
+      const id = String(c?.id || '').trim();
+      let name = String(c?.name || c?.id || '').trim();
+      if (id && name) {
+        const oldName = oldById.get(id) || '';
+        const newIsTech = isTechnicalCacheName(id, name);
+        const oldIsTech = isTechnicalCacheName(id, oldName);
+        if (newIsTech && oldName && !oldIsTech) {
+          name = oldName;
+        }
+      }
+      return { id, name };
+    })
+    .filter((c) => c.id);
+
+  // Dedup by id (stable output, avoid growth/noise).
+  const byId = new Map();
+  for (const r of rowsRaw) {
+    const id = String(r.id || '').trim();
+    if (!id) continue;
+    const name = String(r.name || '').trim();
+    if (!byId.has(id)) byId.set(id, { id, name });
+    else if (name && !byId.get(id).name) byId.set(id, { id, name });
+  }
+  const rows = Array.from(byId.values());
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ platform, updatedAt: nowIso(), chats: rows }, null, 2),
+    'utf8'
+  );
+}
+
+function applyOnlyGroupsToLiveChats(platform, chats, onlyGroups) {
+  if (!onlyGroups) return chats.slice();
+  const p = String(platform || '').trim();
+  if (p === 'whatsapp') return chats.filter((c) => isWhatsAppGroupId(c.id));
+  if (p === 'signal') return chats.filter((c) => looksLikeSignalGroupId(c.id));
+  return chats.slice();
+}
+
 function extractSignalRawMessages(raw) {
   return Array.isArray(raw)
     ? raw
@@ -1364,6 +1806,11 @@ function captureSignalRawEvent(rawEvent) {
     const row = {
       platform: 'signal',
       chatId: normalized?.chatId || null,
+      rawConversationId: normalized?.rawConversationId ?? null,
+      rawGroupId: normalized?.rawGroupId ?? null,
+      rawAuthorId: normalized?.rawAuthorId ?? null,
+      normalizedChatId: normalized?.chatId || null,
+      normalizedSenderId: normalized?.senderId ?? null,
       chatCandidates: Array.isArray(normalized?.chatCandidates) ? normalized.chatCandidates : [],
       chatName: normalized?.chatName ?? null,
       senderId: normalized?.senderId ?? null,
@@ -1404,61 +1851,121 @@ function captureSignalRawEvent(rawEvent) {
 // ----------------------------
 function normalizeSignalMessage(raw) {
   const m = raw || {};
-  const chatId = String(
-    m.chatId || m.groupId || m.source || m.envelope?.groupInfo?.groupId || m.envelope?.source || ''
-  ).trim();
+
+  // Explicit identity separation:
+  // - conversation/group/chat: where the message was posted
+  // - sender/author: who posted it
+  const rawGroupId = String(
+    m.groupId ||
+      m.envelope?.dataMessage?.groupInfo?.groupId ||
+      m.envelope?.groupInfo?.groupId ||
+      ''
+  ).trim() || null;
+
+  const rawAuthorId = String(
+    m.author ||
+      m.sender ||
+      m.source ||
+      m.envelope?.source ||
+      ''
+  ).trim() || null;
+
+  // IMPORTANT:
+  // For Signal group messages, groupId must win over m.chatId.
+  // Some bridge/event shapes put sender-like value into m.chatId,
+  // which breaks flow matching if it overrides the real group identity.
+  const rawConversationId =
+    String(rawGroupId ? `group.${rawGroupId}` : '').trim() ||
+    String(m.chatId || '').trim() ||
+    (rawAuthorId ? String(rawAuthorId).trim() : '') ||
+    null;
+
+  const normalizedChatId = rawConversationId
+    ? String(normalizeChatId(rawConversationId) || rawConversationId).trim()
+    : null;
+
+  const normalizedSenderId = rawAuthorId
+    ? String(normalizeChatId(rawAuthorId) || rawAuthorId).trim()
+    : null;
 
   const chatCandidatesSet = new Set();
+
   const addCandidate = (v) => {
     const s = String(v || '').trim();
     if (!s) return;
     chatCandidatesSet.add(s);
   };
+
   const addNormalizedCandidate = (v) => {
     const s = String(v || '').trim();
     if (!s) return;
+
     const low = s.toLowerCase();
+    chatCandidatesSet.add(low);
+
     if (low.startsWith('group.')) {
       const stripped = low.slice(6).trim();
       if (stripped) chatCandidatesSet.add(stripped);
-    } else {
-      chatCandidatesSet.add(low);
     }
   };
+
   const rawCandidates = Array.isArray(m.chatCandidates) ? m.chatCandidates : [];
   for (const rc of rawCandidates) {
     addCandidate(rc);
     addNormalizedCandidate(rc);
   }
-  addCandidate(chatId);
-  addNormalizedCandidate(chatId);
+
+  if (rawConversationId) {
+    addCandidate(rawConversationId);
+    addNormalizedCandidate(rawConversationId);
+  }
+
+  if (rawGroupId) {
+    addCandidate(rawGroupId);
+    addNormalizedCandidate(rawGroupId);
+    addCandidate(`group.${rawGroupId}`);
+    addNormalizedCandidate(`group.${rawGroupId}`);
+  }
+
   const chatCandidates = Array.from(chatCandidatesSet);
 
-  const senderId = String(m.sender || m.author || m.source || m.envelope?.source || '').trim() || null;
-  const text = String(m.message || m.text || m.body || m.envelope?.dataMessage?.message || '');
+  const text = String(
+    m.message ||
+      m.text ||
+      m.body ||
+      m.envelope?.dataMessage?.message ||
+      ''
+  );
+
   const tsRaw = Number(m.timestamp || m.ts || m.envelope?.timestamp);
   const sentAt = Number.isFinite(tsRaw) ? tsRaw : null;
+
   const attachmentsRaw =
     (Array.isArray(m.attachments) && m.attachments) ||
     (Array.isArray(m.envelope?.dataMessage?.attachments) && m.envelope.dataMessage.attachments) ||
     [];
+
   const attachments = Array.isArray(attachmentsRaw) ? attachmentsRaw : [];
 
   const canonical = {
     platform: 'signal',
-    chatId: chatId || null,
-    chatCandidates: Array.isArray(chatCandidates) ? chatCandidates : [],
+    chatId: normalizedChatId || null,
+    rawConversationId,
+    rawGroupId,
+    rawAuthorId,
+    chatCandidates,
     chatName: null,
-    senderId,
+    senderId: normalizedSenderId,
     senderName: null,
     messageId: String(m.id || m.messageId || m.uuid || '').trim() || null,
     text,
     sentAt,
-    attachments: Array.isArray(attachments) ? attachments : [],
+    attachments,
     isTextMessage: text.trim().length > 0,
     isEmptyMessage: text.trim().length === 0,
     raw: m
   };
+
   if (!canonical.messageId) {
     canonical.messageId = buildSignalFallbackMessageId({
       chatId: canonical.chatId || '',
@@ -1471,20 +1978,65 @@ function normalizeSignalMessage(raw) {
   canonical.id = canonical.messageId;
   canonical.author = canonical.senderId;
   canonical.timestamp = canonical.sentAt || Date.now();
+
   return canonical;
 }
 
 function normalizeSignalMessages(raw) {
   const arr = extractSignalRawMessages(raw);
-  const normalized = arr.map((m) => normalizeSignalMessage(m)).filter((x) => x && x.chatId);
+  let droppedNoChatId = 0;
+  const normalized = arr
+    .map((message) => {
+      const normalizedOne = normalizeSignalMessage(message);
+      return normalizedOne;
+    })
+    .filter((x) => {
+      const ok = Boolean(x && x.chatId);
+      if (!ok) droppedNoChatId += 1;
+      return ok;
+    });
+  if (droppedNoChatId > 0) {
+    pushLogThrottled(
+      'signal_dropped_before_routing_missing_chatid',
+      15000,
+      'WARN',
+      'Signal messages dropped before routing',
+      { reason: 'missing_chat_id', dropped: droppedNoChatId, rawEvents: arr.length }
+    );
+  }
   for (const message of normalized) {
     message.chatCandidates = buildChatCandidates(message);
-    console.log('[DEBUG] candidates:', buildChatCandidates(message));
-    console.log('[DEBUG] routing identity:', {
-      chatId: message.chatId,
-      senderId: message.senderId,
-      candidates: buildChatCandidates(message)
-    });
+    // For group messages, log explicit identity mapping (conversation vs author)
+    const looksGroup =
+      Boolean(String(message?.rawGroupId || '').trim()) || String(message?.chatId || '').startsWith('group.');
+    if (looksGroup) {
+      const resolvedEntry = chatDirectoryStore.findChatByMessage(message);
+      const resolvedChatKey = resolvedEntry?.chatKey ? String(resolvedEntry.chatKey).trim() : null;
+      const resolvedChatName = String(
+        resolvedEntry?.manualLabel ||
+          resolvedEntry?.displayName ||
+          chatDirectoryStore.resolvePanelResolvedName(resolvedEntry) ||
+          ''
+      ).trim() || null;
+      pushLogThrottled(
+        `signal_group_identity_${String(message.chatId || '').slice(0, 24)}`,
+        2000,
+        'INFO',
+        'Signal group identity',
+        {
+          rawConversationId: message.rawConversationId || null,
+          rawGroupId: message.rawGroupId || null,
+          rawAuthorId: message.rawAuthorId || null,
+          normalizedChatId: message.chatId || null,
+          normalizedSenderId: message.senderId || null,
+          resolvedChatKey,
+          resolvedChatName
+        }
+      );
+    }
+  }
+  for (const message of normalized) {
+    chatDirectoryStore.upsertChatFromMessage(message);
   }
   return normalized;
 }
@@ -1507,9 +2059,10 @@ function signalIdCandidates(value) {
 }
 
 async function fetchSignalChats() {
-  const raw = await signalApiRequest('get', '/chats', undefined, undefined, 120000);
+  const raw = await signalApiRequest('get', '/chats', undefined, undefined, SIGNAL_CHATS_TIMEOUT_MS);
   const list = normalizeSignalChatList(raw);
   upsertChatDirectory('signal', list);
+  chatDirectoryStore.dedupAndSaveChatDirectory();
   return list;
 }
 
@@ -1857,33 +2410,35 @@ async function postToFastAPI(payload, url = FASTAPI_URL) {
 
 async function processSignalIncomingMessage(message) {
   const chatId = message.chatId;
+  const resolvedEntry = chatDirectoryStore.findChatByMessage(message);
+  const incomingChatKey = resolvedEntry?.chatKey ? String(resolvedEntry.chatKey).trim() : null;
+  const incomingResolvedName = String(
+    resolvedEntry?.manualLabel || resolvedEntry?.displayName || chatDirectoryStore.resolvePanelResolvedName(resolvedEntry) || ''
+  ).trim();
   const incomingCandidates = new Set(
     (Array.isArray(message.chatCandidates) ? message.chatCandidates : [])
       .flatMap((x) => signalIdCandidates(x))
   );
   for (const x of signalIdCandidates(chatId)) incomingCandidates.add(x);
   const rawText = String(message.text || '').trim();
-  const chatUpsert = chatDirectoryStore.upsertChatFromMessage({
-    ...message,
+  noteSignalIncomingChat(chatId, rawText);
+  pushLog('INFO', 'Signal message received', {
     platform: 'signal',
     chatId,
-    text: rawText
+    incomingChatKey,
+    incomingResolvedName: incomingResolvedName || null,
+    messageId: message.id || null,
+    textLen: rawText.length
   });
-  if (chatUpsert?.created && chatUpsert?.entry?.chatKey) {
-    pushLog('INFO', 'Chat directory entry created', {
-      platform: 'signal',
-      chatKey: chatUpsert.entry.chatKey,
-      aliases: chatUpsert.entry.aliases || [],
-      displayName: chatUpsert.entry.manualLabel || chatUpsert.entry.displayName || ''
-    });
-  } else if (Array.isArray(chatUpsert?.mergedAliases) && chatUpsert.mergedAliases.length > 0) {
-    pushLog('INFO', 'Chat directory aliases merged', {
-      platform: 'signal',
-      chatKey: chatUpsert?.entry?.chatKey || null,
-      mergedAliases: chatUpsert.mergedAliases
-    });
+  if (/галявина/i.test(incomingResolvedName)) {
+    pushLogThrottled(
+      'signal_galyavyna_ingest_seen',
+      5000,
+      'INFO',
+      'Signal ingest seen for Галявина',
+      { chatId, incomingChatKey, incomingResolvedName }
+    );
   }
-  noteSignalIncomingChat(chatId, rawText);
   const isTestProbe = /\btest\b/i.test(rawText);
   let flow = findSignalFlowByIncomingCandidates(message);
   if (isTestProbe) {
@@ -1934,16 +2489,34 @@ async function processSignalIncomingMessage(message) {
     );
     return;
   }
+  pushLog('INFO', 'Signal flow selected', {
+    platform: 'signal',
+    chatId,
+    incomingChatKey,
+    flowId: flow.id,
+    flowName: flow.name,
+    expectedSourceChatKey: String(flow.sourceChatKey || '').trim() || null
+  });
 
   state.lastEventAt = nowIso();
   state.lastMessageAt = nowIso();
   state.counters.received += 1;
 
   if (flow.paused) {
+    pushLog('INFO', 'Signal skipped: flow paused', { flowId: flow.id, flowName: flow.name });
     noteIgnored('signal_paused');
     return;
   }
-  if (!passesFlowContentFilters(flow, rawText)) {
+  const filt = evaluateFlowContentFilters(flow, rawText);
+  pushLog('INFO', 'Signal filter decision', {
+    flowId: flow.id,
+    flowName: flow.name,
+    passed: filt.passed,
+    reason: filt.reason,
+    keywordsTokens: filt.tokK.slice(0, 20),
+    frequenciesTokens: filt.tokF.slice(0, 20)
+  });
+  if (!filt.passed) {
     noteIgnored('signal_filter_miss');
     return;
   }
@@ -1969,8 +2542,16 @@ async function processSignalIncomingMessage(message) {
       pushLog('ERROR', 'Signal→WA: клієнт WhatsApp не готовий', { flowId: flow.id });
       return;
     }
-    await sendWithRateLimit(target, rawText);
-    pushLog('INFO', 'Signal→WA sent', { flowId: flow.id, targetChat: target });
+    try {
+      await sendWithRateLimit(target, rawText);
+      pushLog('INFO', 'Signal→WA sent', { flowId: flow.id, targetChat: target, result: 'sent' });
+    } catch (err) {
+      pushLog('ERROR', 'Signal→WA failed', {
+        flowId: flow.id,
+        targetChat: target,
+        message: err?.message || String(err)
+      });
+    }
     return;
   }
 
@@ -2022,6 +2603,14 @@ async function pollSignalMessages() {
   if (signalLinkInProgress) return;
   if (signalPollInFlight) return;
   signalPollInFlight = true;
+  const pollStartedAt = Date.now();
+  pushLogThrottled(
+    'signal_poll_start',
+    5000,
+    'INFO',
+    'Signal poll start',
+    { endpoint: '/messages', sinceTs: signalLastPollTs || 0 }
+  );
   // Do not hammer /messages until account is linked.
   if (state.signal.linked !== true) {
     const now = Date.now();
@@ -2034,19 +2623,30 @@ async function pollSignalMessages() {
   }
   try {
     const msgs = await fetchSignalMessages(signalLastPollTs || 0);
-    if (msgs.length > 0) {
-      pushLogThrottled(
-        'signal_messages_fetched',
-        15000,
-        'INFO',
-        'Signal messages fetched',
-        { count: msgs.length }
-      );
-    }
+    pushLogThrottled(
+      'signal_poll_success',
+      5000,
+      'INFO',
+      'Signal poll success',
+      {
+        endpoint: '/messages',
+        count: msgs.length,
+        elapsedMs: Date.now() - pollStartedAt
+      }
+    );
     state.signal.lastPollAt = nowIso();
     signalLastPollTs = Date.now();
     for (const m of msgs) {
-      if (signalSeenMessageIds.has(m.id)) continue;
+      if (signalSeenMessageIds.has(m.id)) {
+        pushLogThrottled(
+          `signal_msg_skip_seen_${m.id}`,
+          10000,
+          'INFO',
+          'Signal message skipped before routing',
+          { reason: 'already_seen_message_id', messageId: m.id || null, chatId: m.chatId || null }
+        );
+        continue;
+      }
       signalSeenMessageIds.add(m.id);
       if (signalSeenMessageIds.size > 5000) {
         const first = signalSeenMessageIds.values().next().value;
@@ -2057,12 +2657,22 @@ async function pollSignalMessages() {
   } catch (error) {
     state.signal.lastErrorAt = nowIso();
     state.signal.lastError = error.message;
+    const ctx = error?.signalContext || {};
     pushLogThrottled(
       'signal_polling_failed',
       60000,
       'ERROR',
       'Signal polling failed',
-      { message: error.message }
+      {
+        message: error.message,
+        method: ctx.method || 'GET',
+        endpoint: ctx.endpoint || '/messages',
+        url: ctx.url || null,
+        status: ctx.status || null,
+        code: ctx.code || null,
+        timeoutMs: ctx.timeoutMs || null,
+        elapsedMs: Date.now() - pollStartedAt
+      }
     );
   } finally {
     signalPollInFlight = false;
@@ -2190,7 +2800,7 @@ function attachClientEvents(instance) {
 
       const chatId = getChatId(msg);
       const rawText = String(msg.body || '').trim();
-      const waUpsert = chatDirectoryStore.upsertChatFromMessage({
+      chatDirectoryStore.upsertChatFromMessage({
         platform: 'whatsapp',
         chatId,
         chatCandidates: [chatId],
@@ -2199,19 +2809,6 @@ function attachClientEvents(instance) {
         senderName: null,
         text: rawText
       });
-      if (waUpsert?.created && waUpsert?.entry?.chatKey) {
-        pushLog('INFO', 'Chat directory entry created', {
-          platform: 'whatsapp',
-          chatKey: waUpsert.entry.chatKey,
-          aliases: waUpsert.entry.aliases || []
-        });
-      } else if (Array.isArray(waUpsert?.mergedAliases) && waUpsert.mergedAliases.length > 0) {
-        pushLog('INFO', 'Chat directory aliases merged', {
-          platform: 'whatsapp',
-          chatKey: waUpsert?.entry?.chatKey || null,
-          mergedAliases: waUpsert.mergedAliases
-        });
-      }
 
       let flow = null;
       if (flows.length > 0) {
@@ -2697,44 +3294,683 @@ app.get('/api/signal/linked-check', async (_req, res) => {
   }
 });
 
-app.get('/api/chats', async (req, res) => {
-  const platform = String(req.query.platform || 'whatsapp').trim();
-  if (platform !== 'whatsapp') {
-    if (platform === 'signal') {
-      if (!SIGNAL_API_URL) return res.json({ ok: true, chats: [] });
+/**
+ * Force-refresh Signal chats from bridge, upsert each into chatDirectory,
+ * then return directory-backed list for UI (no direct cache rendering).
+ */
+app.get('/api/signal/chats/refresh', async (req, res) => {
+  if (!SIGNAL_API_URL) return res.json({ ok: true, chats: [], refreshed: false });
+  try {
+    await fetchSignalChats(); // also upserts into directory + dedups
+    const maxEntries = 10000;
+    const decodeBase64Utf8 = (value) => {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
       try {
-        const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
-        const list = await fetchSignalChats();
-        const chats = onlyGroups
-          ? list.filter((c) => !/^\+?\d+$/.test(String(c.id || '').trim()))
-          : list;
-        return res.json({ ok: true, chats });
-      } catch (error) {
-        return res.status(500).json({ ok: false, message: error.message });
+        const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+        const txt = Buffer.from(padded, 'base64').toString('utf8').trim();
+        if (!txt) return '';
+        // Reject clearly binary garbage.
+        if (/[\u0000-\u0008\u000E-\u001F]/.test(txt)) return '';
+        return txt;
+      } catch {
+        return '';
+      }
+    };
+    const buildSignalIdKeys = (id) => {
+      const out = new Set();
+      const add = (v) => {
+        const s = String(v || '').trim();
+        if (!s) return;
+        out.add(s);
+        out.add(s.toLowerCase());
+      };
+      const raw = String(id || '').trim();
+      if (!raw) return out;
+      add(raw);
+      add(normalizeChatId(raw) || '');
+      const low = raw.toLowerCase();
+      if (low.startsWith('group.group.')) {
+        const payload = raw.slice('group.group.'.length).trim();
+        add(`group.${payload}`);
+        const decoded = decodeBase64Utf8(payload);
+        if (decoded) {
+          add(`group.${decoded}`);
+          add(decoded);
+        }
+      }
+      if (low.startsWith('group.')) {
+        const payload = raw.slice('group.'.length).trim();
+        if (payload) {
+          add(payload);
+          // raw group-id -> encoded "group.group.<base64>" variant
+          try {
+            const enc = Buffer.from(payload, 'utf8').toString('base64');
+            add(`group.group.${enc}`);
+          } catch {
+            /* ignore */
+          }
+        }
+      } else {
+        add(`group.${raw}`);
+      }
+      return out;
+    };
+    const signalCacheRows = loadMessengerChatsCache('signal')
+      .map((c) => ({
+        id: String(c?.id || '').trim(),
+        normId: String(normalizeChatId(String(c?.id || '').trim()) || '').trim(),
+        name: String(c?.name || '').trim()
+      }))
+      .filter((x) => x.id);
+    const cacheSignalByKey = new Map();
+    for (const row of signalCacheRows) {
+      for (const k of buildSignalIdKeys(row.id)) {
+        const kk = String(k || '').trim().toLowerCase();
+        if (!kk || cacheSignalByKey.has(kk)) continue;
+        cacheSignalByKey.set(kk, row);
+      }
+      if (row.normId) {
+        const nk = String(row.normId || '').trim().toLowerCase();
+        if (nk && !cacheSignalByKey.has(nk)) cacheSignalByKey.set(nk, row);
       }
     }
-    return res.json({ ok: true, chats: [] });
-  }
-  if (!client || !state.ready) {
-    return res.status(503).json({ ok: false, message: 'Клієнт WhatsApp не готовий. Спочатку увійдіть через QR.' });
-  }
-  try {
-    const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
-    const chats = await client.getChats();
-    const list = chats
-      .filter((c) => {
-        if (!onlyGroups) return true;
-        return String(c.id._serialized || '').endsWith('@g.us');
-      })
-      .map((c) => ({
-        id: c.id._serialized,
-        name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
-    upsertChatDirectory('whatsapp', list);
-    res.json({ ok: true, chats: list });
+    function resolveCacheMatchForEntry(entry) {
+      const aliases = Array.isArray(entry?.aliases) ? entry.aliases : [];
+      const addAliasVariants = (value, outSet) => {
+        const raw = String(value || '').trim();
+        if (!raw) return;
+        outSet.add(raw);
+        const norm = String(normalizeChatId(raw) || '').trim();
+        if (norm) outSet.add(norm);
+        if (raw.startsWith('group.')) outSet.add(raw.slice(6));
+        if (norm.startsWith('group.')) outSet.add(norm.slice(6));
+        if (!raw.startsWith('group.')) outSet.add('group.' + raw);
+        if (norm && !norm.startsWith('group.')) outSet.add('group.' + norm);
+      };
+      const tryResolve = (k) => {
+        const key = String(k || '').trim();
+        if (!key) return null;
+        const byAny = cacheSignalByKey.get(key.toLowerCase());
+        if (byAny) return { id: byAny.id, name: byAny.name };
+        return null;
+      };
+      for (const a of aliases) {
+        const variants = new Set();
+        addAliasVariants(a, variants);
+        for (const v of variants) {
+          const match = tryResolve(v);
+          if (match) return match;
+        }
+      }
+      // Fallback for Signal only: if alias chain failed, try unique human-name match in cache.
+      // Still uses signal-chats-cache as source of truth for canonical chat id.
+      const nameCandidates = [
+        String(entry?.manualLabel || '').trim(),
+        String(entry?.displayName || '').trim(),
+        String(chatDirectoryStore.resolvePanelResolvedName(entry) || '').trim()
+      ].filter(Boolean);
+      for (const n of nameCandidates) {
+        const needle = n.toLowerCase();
+        if (!needle) continue;
+        const byName = signalCacheRows.filter((r) => String(r?.name || '').trim().toLowerCase() === needle);
+        if (byName.length === 1) {
+          return { id: byName[0].id, name: byName[0].name };
+        }
+      }
+      return { id: '', name: '' };
+    }
+    const entries = chatDirectoryStore.listAllChatsSortedByLastSeen('signal', maxEntries);
+    const chats = entries.map((entry) => {
+      const cacheMatch = resolveCacheMatchForEntry(entry);
+      return {
+        chatKey: String(entry.chatKey || '').trim(),
+        // For Signal, source of truth for chatId is messenger cache match only.
+        // Never fallback to chat-directory aliases[0], because it may contain non-canonical IDs.
+        chatId: String(cacheMatch.id || '').trim() || null,
+        platform: String(entry.platform || '').trim(),
+        chatType: entry.chatType === 'direct' ? 'direct' : 'group',
+        displayName: String(entry.displayName || '').trim(),
+        manualLabel: String(entry.manualLabel || '').trim(),
+        resolvedName: chatDirectoryStore.resolvePanelResolvedName(entry),
+        name: String(cacheMatch.name || '').trim(),
+        lastSeenAt: entry.lastSeenAt || null,
+        lastMessagePreview: String(entry.lastMessagePreview || '').trim()
+      };
+    });
+    console.log(`[API] /api/signal/chats/refresh count=${chats.length}`);
+    return res.json({ ok: true, refreshed: true, chats });
   } catch (error) {
-    res.status(500).json({ ok: false, message: error.message });
+    return res.status(500).json({ ok: false, message: error.message || String(error) });
+  }
+});
+
+app.get('/api/chats', async (req, res) => {
+  const useLive = String(req.query.live || '').trim() === '1';
+
+  if (useLive) {
+    const platform = String(req.query.platform || 'whatsapp').trim();
+    if (platform !== 'whatsapp') {
+      if (platform === 'signal') {
+        if (!SIGNAL_API_URL) return res.json({ ok: true, chats: [] });
+        try {
+          const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
+          const list = await fetchSignalChats();
+          const chats = onlyGroups
+            ? list.filter((c) => looksLikeSignalGroupId(c.id))
+            : list;
+          return res.json({ ok: true, chats });
+        } catch (error) {
+          return res.status(500).json({ ok: false, message: error.message });
+        }
+      }
+      return res.json({ ok: true, chats: [] });
+    }
+    if (!client || !state.ready) {
+      return res
+        .status(503)
+        .json({ ok: false, message: 'Клієнт WhatsApp не готовий. Спочатку увійдіть через QR.' });
+    }
+    try {
+      const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
+      const chats = await client.getChats();
+      const list = chats
+        .filter((c) => {
+          if (!onlyGroups) return true;
+          return String(c.id._serialized || '').endsWith('@g.us');
+        })
+        .map((c) => ({
+          id: c.id._serialized,
+          name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+      upsertChatDirectory('whatsapp', list);
+      return res.json({ ok: true, chats: list });
+    } catch (error) {
+      return res.status(500).json({ ok: false, message: error.message });
+    }
+  }
+
+  const rawPlat = req.query.platform;
+  const platformFilter =
+    rawPlat === undefined || rawPlat === null || String(rawPlat).trim() === ''
+      ? ''
+      : String(rawPlat).trim();
+  if (platformFilter && !['whatsapp', 'signal'].includes(platformFilter)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'platform must be "signal", "whatsapp", or omitted (all chats from directory)'
+    });
+  }
+
+  const rawLimit = req.query.limit;
+  let maxEntries = 10000;
+  if (rawLimit !== undefined && rawLimit !== null && String(rawLimit).trim() !== '') {
+    const n = Number(rawLimit);
+    if (!Number.isFinite(n) || n < 1) {
+      return res.status(400).json({ ok: false, message: 'limit must be a positive number' });
+    }
+    maxEntries = Math.min(10000, Math.floor(n));
+  }
+
+  // Resolve human names from messenger caches into directory rows for UI labels.
+  const decodeBase64Utf8 = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const txt = Buffer.from(padded, 'base64').toString('utf8').trim();
+      if (!txt) return '';
+      if (/[\u0000-\u0008\u000E-\u001F]/.test(txt)) return '';
+      return txt;
+    } catch {
+      return '';
+    }
+  };
+  const buildSignalIdKeys = (id) => {
+    const out = new Set();
+    const add = (v) => {
+      const s = String(v || '').trim();
+      if (!s) return;
+      out.add(s);
+      out.add(s.toLowerCase());
+    };
+    const raw = String(id || '').trim();
+    if (!raw) return out;
+    add(raw);
+    add(normalizeChatId(raw) || '');
+    const low = raw.toLowerCase();
+    if (low.startsWith('group.group.')) {
+      const payload = raw.slice('group.group.'.length).trim();
+      add(`group.${payload}`);
+      const decoded = decodeBase64Utf8(payload);
+      if (decoded) {
+        add(`group.${decoded}`);
+        add(decoded);
+      }
+    }
+    if (low.startsWith('group.')) {
+      const payload = raw.slice('group.'.length).trim();
+      if (payload) {
+        add(payload);
+        try {
+          const enc = Buffer.from(payload, 'utf8').toString('base64');
+          add(`group.group.${enc}`);
+        } catch {
+          /* ignore */
+        }
+      }
+    } else {
+      add(`group.${raw}`);
+    }
+    return out;
+  };
+  const signalCacheRows = loadMessengerChatsCache('signal')
+    .map((c) => ({
+      id: String(c?.id || '').trim(),
+      normId: String(normalizeChatId(String(c?.id || '').trim()) || '').trim(),
+      name: String(c?.name || '').trim()
+    }))
+    .filter((x) => x.id);
+  const cacheSignalByKey = new Map();
+  for (const row of signalCacheRows) {
+    for (const k of buildSignalIdKeys(row.id)) {
+      const kk = String(k || '').trim().toLowerCase();
+      if (!kk || cacheSignalByKey.has(kk)) continue;
+      cacheSignalByKey.set(kk, row);
+    }
+    if (row.normId) {
+      const nk = String(row.normId || '').trim().toLowerCase();
+      if (nk && !cacheSignalByKey.has(nk)) cacheSignalByKey.set(nk, row);
+    }
+  }
+  const cacheWhatsapp = new Map(
+    loadMessengerChatsCache('whatsapp')
+      .map((c) => [String(c?.id || '').trim(), String(c?.name || '').trim()])
+      .filter((x) => x[0])
+  );
+
+  function resolveCacheMatchForEntry(entry) {
+    const e = entry || {};
+    const platform = String(e?.platform || '').trim();
+    const cache = platform === 'whatsapp' ? cacheWhatsapp : null;
+    if (!cache && platform !== 'signal') return { id: '', name: '' };
+    const aliases = Array.isArray(e?.aliases) ? e.aliases : [];
+    const addAliasVariants = (value, outSet) => {
+      const raw = String(value || '').trim();
+      if (!raw) return;
+      outSet.add(raw);
+      const norm = String(normalizeChatId(raw) || '').trim();
+      if (norm) outSet.add(norm);
+      if (raw.startsWith('group.')) outSet.add(raw.slice(6));
+      if (norm.startsWith('group.')) outSet.add(norm.slice(6));
+      if (!raw.startsWith('group.')) outSet.add('group.' + raw);
+      if (norm && !norm.startsWith('group.')) outSet.add('group.' + norm);
+    };
+
+    function tryResolveFromKey(key) {
+      const k = String(key || '').trim();
+      if (!k) return null;
+      if (platform === 'signal') {
+        const byAny = cacheSignalByKey.get(k.toLowerCase());
+        if (byAny) return { id: byAny.id, name: byAny.name };
+        return null;
+      }
+      const n = cache.get(k) || '';
+      if (!n) return null;
+      return { id: k, name: n };
+    }
+
+    for (const a of aliases) {
+      const variants = new Set();
+      addAliasVariants(a, variants);
+      for (const v of variants) {
+        const match = tryResolveFromKey(v);
+        if (match) return match;
+      }
+    }
+    if (platform === 'signal') {
+      // Fallback for Signal only: unique exact name match in cache.
+      // Canonical id still comes from signal-chats-cache.json.
+      const nameCandidates = [
+        String(e?.manualLabel || '').trim(),
+        String(e?.displayName || '').trim(),
+        String(chatDirectoryStore.resolvePanelResolvedName(e) || '').trim()
+      ].filter(Boolean);
+      for (const n of nameCandidates) {
+        const needle = n.toLowerCase();
+        if (!needle) continue;
+        const byName = signalCacheRows.filter((r) => String(r?.name || '').trim().toLowerCase() === needle);
+        if (byName.length === 1) {
+          return { id: byName[0].id, name: byName[0].name };
+        }
+      }
+    }
+    return { id: '', name: '' };
+  }
+
+  const entries = chatDirectoryStore.listAllChatsSortedByLastSeen(platformFilter, maxEntries);
+  const chats = entries.map((entry) => {
+    const cacheMatch = resolveCacheMatchForEntry(entry);
+    const rowPlatform = String(entry.platform || '').trim();
+    const chatId =
+      rowPlatform === 'signal'
+        ? String(cacheMatch.id || '').trim() || null
+        : String(cacheMatch.id || '').trim() || String(entry.aliases?.[0] || '').trim() || null;
+    return {
+      chatKey: String(entry.chatKey || '').trim(),
+      // For Signal, return only canonical id resolved from signal-chats-cache.
+      // If unresolved, return null (UI should ask user to refresh), never aliases[0].
+      chatId,
+      platform: String(entry.platform || '').trim(),
+      chatType: entry.chatType === 'direct' ? 'direct' : 'group',
+      displayName: String(entry.displayName || '').trim(),
+      manualLabel: String(entry.manualLabel || '').trim(),
+      resolvedName: chatDirectoryStore.resolvePanelResolvedName(entry),
+      // Human label from messenger cache (Signal contacts/groups list).
+      name: String(cacheMatch.name || '').trim(),
+      lastSeenAt: entry.lastSeenAt || null,
+      lastMessagePreview: String(entry.lastMessagePreview || '').trim()
+    };
+  });
+
+  const logPlatform = platformFilter || 'all';
+  console.log(`[API] /api/chats platform=${logPlatform} count=${chats.length}`);
+  return res.json({ ok: true, chats });
+});
+
+/**
+ * Debug resolver for Signal chat-id mapping:
+ * shows how chat-directory aliases are normalized and matched to signal cache ids.
+ */
+app.get('/api/chats/debug-resolve', (req, res) => {
+  const platform = String(req.query.platform || '').trim();
+  const chatKey = String(req.query.chatKey || '').trim();
+  if (platform !== 'signal') {
+    return res.status(400).json({ ok: false, message: 'platform must be "signal"' });
+  }
+  if (!chatKey) {
+    return res.status(400).json({ ok: false, message: 'chatKey is required' });
+  }
+  const entry = chatDirectoryStore.getChatByKey(chatKey);
+  if (!entry) {
+    return res.status(404).json({ ok: false, message: 'Chat not found in chat-directory' });
+  }
+
+  const decodeBase64Utf8 = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+      const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const txt = Buffer.from(padded, 'base64').toString('utf8').trim();
+      if (!txt) return '';
+      if (/[\u0000-\u0008\u000E-\u001F]/.test(txt)) return '';
+      return txt;
+    } catch {
+      return '';
+    }
+  };
+  const buildSignalIdKeys = (id) => {
+    const out = new Set();
+    const add = (v) => {
+      const s = String(v || '').trim();
+      if (!s) return;
+      out.add(s);
+      out.add(s.toLowerCase());
+    };
+    const raw = String(id || '').trim();
+    if (!raw) return out;
+    add(raw);
+    add(normalizeChatId(raw) || '');
+    const low = raw.toLowerCase();
+    if (low.startsWith('group.group.')) {
+      const payload = raw.slice('group.group.'.length).trim();
+      add(`group.${payload}`);
+      const decoded = decodeBase64Utf8(payload);
+      if (decoded) {
+        add(`group.${decoded}`);
+        add(decoded);
+      }
+    }
+    if (low.startsWith('group.')) {
+      const payload = raw.slice('group.'.length).trim();
+      if (payload) {
+        add(payload);
+        try {
+          add(`group.group.${Buffer.from(payload, 'utf8').toString('base64')}`);
+        } catch {
+          /* ignore */
+        }
+      }
+    } else {
+      add(`group.${raw}`);
+    }
+    return Array.from(out);
+  };
+
+  const signalCacheRows = loadMessengerChatsCache('signal')
+    .map((c) => ({
+      id: String(c?.id || '').trim(),
+      name: String(c?.name || '').trim(),
+      keys: buildSignalIdKeys(String(c?.id || '').trim())
+    }))
+    .filter((x) => x.id);
+
+  const aliasKeys = new Set();
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+  for (const a of aliases) {
+    for (const k of buildSignalIdKeys(a)) aliasKeys.add(String(k || '').trim().toLowerCase());
+  }
+  const aliasKeyList = Array.from(aliasKeys).filter(Boolean);
+
+  const matchedById = signalCacheRows.filter((row) =>
+    row.keys.some((k) => aliasKeys.has(String(k || '').trim().toLowerCase()))
+  );
+
+  const nameCandidates = [
+    String(entry.manualLabel || '').trim(),
+    String(entry.displayName || '').trim(),
+    String(chatDirectoryStore.resolvePanelResolvedName(entry) || '').trim()
+  ].filter(Boolean);
+  let matchedByName = [];
+  for (const n of nameCandidates) {
+    const needle = n.toLowerCase();
+    const found = signalCacheRows.filter((r) => String(r.name || '').trim().toLowerCase() === needle);
+    if (found.length) {
+      matchedByName = found;
+      break;
+    }
+  }
+
+  return res.json({
+    ok: true,
+    entry: {
+      chatKey: String(entry.chatKey || '').trim(),
+      displayName: String(entry.displayName || '').trim(),
+      manualLabel: String(entry.manualLabel || '').trim(),
+      resolvedName: String(chatDirectoryStore.resolvePanelResolvedName(entry) || '').trim(),
+      aliases
+    },
+    debug: {
+      aliasKeys: aliasKeyList,
+      matchedByIdCount: matchedById.length,
+      matchedById: matchedById.slice(0, 20).map((x) => ({ id: x.id, name: x.name })),
+      matchedByNameCount: matchedByName.length,
+      matchedByName: matchedByName.slice(0, 20).map((x) => ({ id: x.id, name: x.name })),
+      signalCacheCount: signalCacheRows.length
+    }
+  });
+});
+
+app.get('/api/messenger-chats', async (req, res) => {
+  const platform = String(req.query.platform || '').trim();
+  if (!['signal', 'whatsapp'].includes(platform)) {
+    return res.status(400).json({ ok: false, message: 'platform must be "signal" or "whatsapp"' });
+  }
+  const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
+  const refresh = String(req.query.refresh || '').trim() === '1';
+  try {
+    const cached = readMessengerChatsCache(platform);
+    let chats = cached.chats || [];
+    const cachedUpdatedAt = cached.updatedAt;
+    const stale = !isCacheFresh(cachedUpdatedAt);
+    const shouldRefresh = refresh || stale;
+
+    if (refresh) {
+      console.log(`[CACHE] messenger-chats forced refresh platform=${platform}`);
+    } else if (stale) {
+      console.log(
+        `[CACHE] messenger-chats cache expired platform=${platform} ageMs=${cacheAgeMs(cachedUpdatedAt)} ttlMs=${MESSENGER_CHATS_CACHE_TTL_MS}`
+      );
+    } else {
+      console.log(
+        `[CACHE] messenger-chats cache hit platform=${platform} ageMs=${cacheAgeMs(cachedUpdatedAt)} ttlMs=${MESSENGER_CHATS_CACHE_TTL_MS}`
+      );
+    }
+
+    let stats = { added: 0, updated: 0, total: chats.length };
+
+    if (shouldRefresh) {
+      if (platform === 'signal') {
+        if (!SIGNAL_API_URL) {
+          // Cannot refresh; serve whatever cache we have without breaking UI.
+          const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+          return res.json({
+            ok: true,
+            chats: out,
+            source: 'cache',
+            refreshed: false,
+            cache: { updatedAt: cachedUpdatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale },
+            stats
+          });
+        }
+        const before = new Map(chats.map((c) => [String(c.id || '').trim(), String(c.name || '').trim()]).filter((x) => x[0]));
+        let fresh;
+        try {
+          fresh = await fetchSignalChats();
+        } catch (err) {
+          // Signal bridge is temporarily unavailable; serve cache instead of breaking UI.
+          const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+          const warn = err?.message || String(err);
+          console.warn('[CACHE] messenger-chats signal refresh failed; serving cache', { message: warn });
+          return res.json({
+            ok: true,
+            message: warn,
+            chats: out,
+            source: 'cache',
+            refreshed: false,
+            cache: { updatedAt: cachedUpdatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale },
+            stats
+          });
+        }
+        const after = new Map(fresh.map((c) => [String(c.id || '').trim(), String(c.name || '').trim()]).filter((x) => x[0]));
+        let added = 0;
+        let updated = 0;
+        for (const [id, name] of after.entries()) {
+          if (!before.has(id)) added += 1;
+          else if (String(before.get(id) || '').trim() !== String(name || '').trim()) updated += 1;
+        }
+        chats = fresh;
+        stats = { added, updated, total: fresh.length };
+      } else {
+        if (!client || !state.ready) {
+          // Cannot refresh; serve cache if any, without breaking UI.
+          const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+          return res.status(chats.length > 0 ? 200 : 503).json({
+            ok: chats.length > 0,
+            message: chats.length > 0 ? undefined : 'Клієнт WhatsApp не готовий. Спочатку увійдіть через QR.',
+            chats: out,
+            source: 'cache',
+            refreshed: false,
+            cache: { updatedAt: cachedUpdatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale },
+            stats
+          });
+        }
+        const before = new Map(chats.map((c) => [String(c.id || '').trim(), String(c.name || '').trim()]).filter((x) => x[0]));
+        let waChats;
+        try {
+          waChats = await client.getChats();
+        } catch (err) {
+          // WhatsApp Web sometimes reloads; serve cache instead of breaking UI.
+          const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+          const warn = isWaTransientDetachedFrameError(err)
+            ? 'WhatsApp Web перезапускається (detached frame). Спробуйте «Оновити» ще раз через кілька секунд.'
+            : (err?.message || String(err));
+          console.warn('[CACHE] messenger-chats whatsapp refresh failed; serving cache', { message: warn });
+          return res.json({
+            ok: true,
+            message: warn,
+            chats: out,
+            source: 'cache',
+            refreshed: false,
+            cache: { updatedAt: cachedUpdatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale },
+            stats
+          });
+        }
+        const fresh = waChats
+          .map((c) => ({
+            id: c.id._serialized,
+            name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+        const after = new Map(fresh.map((c) => [String(c.id || '').trim(), String(c.name || '').trim()]).filter((x) => x[0]));
+        let added = 0;
+        let updated = 0;
+        for (const [id, name] of after.entries()) {
+          if (!before.has(id)) added += 1;
+          else if (String(before.get(id) || '').trim() !== String(name || '').trim()) updated += 1;
+        }
+        chats = fresh;
+        stats = { added, updated, total: fresh.length };
+        upsertChatDirectory('whatsapp', fresh);
+      }
+      saveMessengerChatsCache(platform, chats);
+      console.log(
+        `[CACHE] messenger-chats refreshed platform=${platform} total=${stats.total} added=${stats.added} updated=${stats.updated}`
+      );
+    }
+    const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+    return res.json({
+      ok: true,
+      chats: out,
+      source: 'cache',
+      refreshed: refresh,
+      cache: {
+        updatedAt: (shouldRefresh ? nowIso() : cachedUpdatedAt) || null,
+        ttlMs: MESSENGER_CHATS_CACHE_TTL_MS,
+        stale: !isCacheFresh(cachedUpdatedAt)
+      },
+      stats
+    });
+  } catch (error) {
+    // Last-resort: do not kill UI if we have cached WA chats.
+    try {
+      if (String(req.query.platform || '').trim() === 'whatsapp') {
+        const cached = readMessengerChatsCache('whatsapp');
+        const chats = cached.chats || [];
+        if (chats.length > 0 && isWaTransientDetachedFrameError(error)) {
+          const out = applyOnlyGroupsToLiveChats('whatsapp', chats, String(req.query.only_groups ?? '1') !== '0');
+          const warn =
+            'WhatsApp Web перезапускається (detached frame). Показую останній кеш; натисніть «Оновити» пізніше.';
+          console.warn('[CACHE] messenger-chats transient failure; serving cache', { message: warn });
+          return res.json({
+            ok: true,
+            message: warn,
+            chats: out,
+            source: 'cache',
+            refreshed: false,
+            cache: { updatedAt: cached.updatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale: !isCacheFresh(cached.updatedAt) },
+            stats: { total: chats.length, added: 0, updated: 0 }
+          });
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return res.status(500).json({ ok: false, message: error.message || String(error) });
   }
 });
 
@@ -2745,7 +3981,8 @@ app.get('/api/chat-directory/recent', (req, res) => {
   if (platform && !allowed.includes(platform)) {
     return res.status(400).json({ ok: false, message: 'Unsupported platform' });
   }
-  const list = chatDirectoryStore.listRecentChats(platform || '');
+  const lim = Math.min(500, Math.max(1, Number(req.query.limit || 100)));
+  const list = chatDirectoryStore.listRecentChats(platform || '', lim);
   const chats = list.map((entry) => {
     const safe = {
       chatKey: String(entry.chatKey || '').trim(),
@@ -2764,16 +4001,46 @@ app.get('/api/chat-directory/recent', (req, res) => {
   return res.json({ ok: true, chats });
 });
 
+app.get('/api/chat-directory/resolve-source', (req, res) => {
+  const flowId = String(req.query.flowId || '').trim();
+  if (!flowId) return res.status(400).json({ ok: false, message: 'flowId required' });
+  const f = flows.find((x) => x.id === flowId);
+  if (!f) return res.status(404).json({ ok: false, message: 'Flow not found' });
+  const p = inferPlatforms(f);
+  if (p.sourcePlatform !== 'signal') return res.json({ ok: true, chatKey: null });
+  const existing = String(f.sourceChatKey || '').trim();
+  if (existing) {
+    return res.json({
+      ok: true,
+      chatKey: existing,
+      displayName: String(f.sourceChatRefs?.[0]?.name || '').trim() || null
+    });
+  }
+  const key = resolveSignalSourceChatKeyFromFlowAliases(f);
+  if (!key) return res.json({ ok: true, chatKey: null });
+  const entry = chatDirectoryStore.getChatByKey(key);
+  return res.json({
+    ok: true,
+    chatKey: key,
+    displayName: entry
+      ? String(entry.manualLabel || entry.displayName || '').trim() || null
+      : null
+  });
+});
+
 app.get('/api/flows', (req, res) => {
   res.json({ ok: true, flows });
 });
 
 app.post('/api/flows', (req, res) => {
-  const normalized = normalizeAutomation(req.body || {});
+  const body = req.body || {};
+  console.log('[API /api/flows body]', JSON.stringify(body, null, 2));
+  const normalized = normalizeAutomation(body);
   const err = validateAutomation(normalized, flows, null);
   if (err) {
     return res.status(400).json({ ok: false, message: err });
   }
+  applyFlowManualLabelsToDirectory(normalized);
   flows.push(normalized);
   saveFlowsToDisk(flows);
   writeHealth();
@@ -2786,11 +4053,14 @@ app.put('/api/flows/:id', (req, res) => {
   if (idx === -1) {
     return res.status(404).json({ ok: false, message: 'Автоматизацію не знайдено' });
   }
-  const normalized = normalizeAutomation({ ...flows[idx], ...req.body }, req.params.id);
+  const body = req.body || {};
+  console.log('[API /api/flows body]', JSON.stringify(body, null, 2));
+  const normalized = normalizeAutomation({ ...flows[idx], ...body }, req.params.id);
   const err = validateAutomation(normalized, flows, req.params.id);
   if (err) {
     return res.status(400).json({ ok: false, message: err });
   }
+  applyFlowManualLabelsToDirectory(normalized);
   flows[idx] = normalized;
   saveFlowsToDisk(flows);
   writeHealth();
@@ -2856,6 +4126,7 @@ async function prefetchChatsInBackground() {
   try {
     if (SIGNAL_API_URL) {
       const signalList = await fetchSignalChats();
+      saveMessengerChatsCache('signal', signalList);
       enrichFlowRefsFromDirectory();
       if (AUTO_SIGNAL_SOURCE_AUTOREMAP) {
         autoRemapSignalFlowsFromDirectory(true);
@@ -2887,6 +4158,7 @@ async function prefetchChatsInBackground() {
         }))
         .filter((x) => x.id && x.name);
       upsertChatDirectory('whatsapp', list);
+      saveMessengerChatsCache('whatsapp', list);
       enrichFlowRefsFromDirectory();
       pushLogThrottled(
         'wa_chats_prefetched',
@@ -2957,6 +4229,9 @@ async function startupAutoInit() {
     prefetchChatsInBackground().catch(() => {});
   }
 }
+
+// Keep runtime logs scoped to current service session.
+clearLogsOnStartup();
 
 app.listen(PORT, () => {
   startHeartbeat();
