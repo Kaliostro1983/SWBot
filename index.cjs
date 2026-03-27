@@ -772,7 +772,11 @@ function resolveSignalSourceChatKeyFromFlowAliases(flow) {
   for (const e of entries) {
     for (const a of e.aliases || []) {
       const s = String(a || '').trim();
-      if (s && set.has(s)) return String(e.chatKey || '').trim() || null;
+      if (!s) continue;
+      // Check both raw alias and its normalized form (group: ↔ group. conversion).
+      if (set.has(s)) return String(e.chatKey || '').trim() || null;
+      const norm = normalizeChatId(s);
+      if (norm && norm !== s && set.has(norm)) return String(e.chatKey || '').trim() || null;
     }
   }
   return null;
