@@ -187,18 +187,6 @@ function upsertChatDirectory(platform, chats) {
     if (isSignal && isSignalGroup) {
       // For groups, include base-id candidate too (for incoming messages that may omit prefix).
       candidates.push(id.slice(6));
-      // If rawId was group.group.X (double-encoded), decode X to get the actual group ID
-      // that arrives in incoming messages (group.{decoded_X}).
-      if (rawId.toLowerCase().startsWith('group.group.')) {
-        const innerPayload = rawId.slice('group.group.'.length).trim();
-        try {
-          const decoded = Buffer.from(innerPayload, 'base64').toString().trim();
-          if (decoded && decoded !== innerPayload) {
-            candidates.push(`group.${decoded}`.toLowerCase());
-            candidates.push(decoded.toLowerCase());
-          }
-        } catch { /* ignore */ }
-      }
     }
     const found = chatDirectoryStore.findChatByMessage({
       platform,
@@ -224,17 +212,6 @@ function upsertChatDirectory(platform, chats) {
       if (isSignal && isSignalGroup) {
         // Ensure base id is also present for matching.
         aliasesToAdd.push(id.slice(6));
-        // Add decoded alias for double-encoded group IDs (group.group.X → group.{decoded(X)}).
-        if (rawId.toLowerCase().startsWith('group.group.')) {
-          const innerPayload = rawId.slice('group.group.'.length).trim();
-          try {
-            const decoded = Buffer.from(innerPayload, 'base64').toString().trim();
-            if (decoded && decoded !== innerPayload) {
-              aliasesToAdd.push(`group.${decoded}`.toLowerCase());
-              aliasesToAdd.push(decoded.toLowerCase());
-            }
-          } catch { /* ignore */ }
-        }
       } else if (isSignal && !isSignalGroup) {
         // Cleanup: older imports mistakenly added group-aliases to direct chats, which breaks chatType.
         try {
@@ -3331,27 +3308,9 @@ app.get('/api/signal/chats/refresh', async (req, res) => {
       add(raw);
       add(normalizeChatId(raw) || '');
       const low = raw.toLowerCase();
-      if (low.startsWith('group.group.')) {
-        const payload = raw.slice('group.group.'.length).trim();
-        add(`group.${payload}`);
-        const decoded = decodeBase64Utf8(payload);
-        if (decoded) {
-          add(`group.${decoded}`);
-          add(decoded);
-        }
-      }
       if (low.startsWith('group.')) {
         const payload = raw.slice('group.'.length).trim();
-        if (payload) {
-          add(payload);
-          // raw group-id -> encoded "group.group.<base64>" variant
-          try {
-            const enc = Buffer.from(payload, 'utf8').toString('base64');
-            add(`group.group.${enc}`);
-          } catch {
-            /* ignore */
-          }
-        }
+        if (payload) add(payload);
       } else {
         add(`group.${raw}`);
       }
@@ -3542,26 +3501,9 @@ app.get('/api/chats', async (req, res) => {
     add(raw);
     add(normalizeChatId(raw) || '');
     const low = raw.toLowerCase();
-    if (low.startsWith('group.group.')) {
-      const payload = raw.slice('group.group.'.length).trim();
-      add(`group.${payload}`);
-      const decoded = decodeBase64Utf8(payload);
-      if (decoded) {
-        add(`group.${decoded}`);
-        add(decoded);
-      }
-    }
     if (low.startsWith('group.')) {
       const payload = raw.slice('group.'.length).trim();
-      if (payload) {
-        add(payload);
-        try {
-          const enc = Buffer.from(payload, 'utf8').toString('base64');
-          add(`group.group.${enc}`);
-        } catch {
-          /* ignore */
-        }
-      }
+      if (payload) add(payload);
     } else {
       add(`group.${raw}`);
     }
@@ -3726,25 +3668,9 @@ app.get('/api/chats/debug-resolve', (req, res) => {
     add(raw);
     add(normalizeChatId(raw) || '');
     const low = raw.toLowerCase();
-    if (low.startsWith('group.group.')) {
-      const payload = raw.slice('group.group.'.length).trim();
-      add(`group.${payload}`);
-      const decoded = decodeBase64Utf8(payload);
-      if (decoded) {
-        add(`group.${decoded}`);
-        add(decoded);
-      }
-    }
     if (low.startsWith('group.')) {
       const payload = raw.slice('group.'.length).trim();
-      if (payload) {
-        add(payload);
-        try {
-          add(`group.group.${Buffer.from(payload, 'utf8').toString('base64')}`);
-        } catch {
-          /* ignore */
-        }
-      }
+      if (payload) add(payload);
     } else {
       add(`group.${raw}`);
     }

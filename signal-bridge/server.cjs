@@ -196,7 +196,10 @@ app.get('/chats', async (_req, res) => {
     if (!groupsRes?.__error) {
       const groups = Array.isArray(groupsRes.data) ? groupsRes.data : [];
       for (const g of groups) {
-        const gid = String(g?.id || g?.groupId || '').trim();
+        let gid = String(g?.id || g?.groupId || '').trim();
+        // signal-cli-api may already include a 'group.' prefix — strip it so we
+        // always store IDs as "group.<rawId>", matching the format used in /messages.
+        while (gid.toLowerCase().startsWith('group.')) gid = gid.slice(6).trim();
         const prefixedId = gid ? `group.${gid}` : '';
         const item = normalizeChatItem(prefixedId, g?.name || gid);
         if (item) chats.push(item);
