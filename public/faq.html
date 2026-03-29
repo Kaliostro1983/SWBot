@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WS Bridge — FAQ / Довідка</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #1C1917;
+      --panel: #28211E;
+      --panel2: #211A17;
+      --border: rgba(255,255,255,0.07);
+      --border-strong: rgba(255,255,255,0.12);
+      --text: #F5F0ED;
+      --muted: #A8998F;
+      --accent: #CC785C;
+      --accent-hover: #D4896C;
+      --accent-dim: rgba(204,120,92,0.14);
+      --green: #52B788;
+      --green-dim: rgba(82,183,136,0.12);
+      --blue: #6AA8C9;
+      --blue-dim: rgba(106,168,201,0.12);
+      --yellow: #FBBF24;
+      --yellow-dim: rgba(251,191,36,0.10);
+      --danger: #F87171;
+      --danger-dim: rgba(248,113,113,0.10);
+      --radius: 18px;
+      --radius-sm: 12px;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .app { display: flex; min-height: 100vh; }
+
+    /* ── Sidebar ────────────────────────────────────────────── */
+    .sidebar {
+      width: 232px;
+      flex-shrink: 0;
+      background: var(--panel2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 22px 12px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .logo {
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: -0.025em;
+      margin-bottom: 24px;
+      padding: 0 10px;
+      text-decoration: none;
+      color: var(--text);
+      display: block;
+    }
+    .logo .logo-w { color: #52B788; }
+    .logo .logo-s { color: #6AA8C9; }
+    .logo .logo-bridge { color: var(--muted); font-weight: 500; }
+    .nav-section {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 8px 14px 6px;
+      margin-top: 4px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: 9px 14px;
+      margin-bottom: 2px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .nav-link.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+    .sidebar-foot {
+      margin-top: auto;
+      padding: 12px 10px 0;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sidebar-version { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--accent); opacity: 0.85; }
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { padding: 24px 20px 60px; }
+    }
+
+    /* ── Main ───────────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 52px 80px;
+      max-width: 820px;
+    }
+    .page-title {
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0 0 6px;
+    }
+    .page-sub {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 44px;
+      line-height: 1.6;
+    }
+
+    /* ── Category header ────────────────────────────────────── */
+    .cat-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 36px 0 16px;
+      scroll-margin-top: 24px;
+    }
+    .cat-header:first-of-type { margin-top: 0; }
+    .cat-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+    .cat-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .cat-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── FAQ item ───────────────────────────────────────────── */
+    .faq-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .faq-item:hover { border-color: var(--border-strong); }
+    .faq-q {
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 18px 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--font);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.4;
+      transition: color 0.15s;
+    }
+    .faq-q:hover { color: var(--accent); }
+    .faq-q.open { color: var(--accent); }
+    .faq-arrow {
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .faq-q.open .faq-arrow { transform: rotate(180deg); }
+    .faq-body {
+      display: none;
+      padding: 0 22px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .faq-body.open { display: block; }
+    .faq-body p {
+      margin: 14px 0 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .faq-body p strong { color: var(--text); font-weight: 600; }
+    .faq-body p:first-child { margin-top: 16px; }
+    .faq-body p:last-child { margin-bottom: 0; }
+
+    /* ── Notice ─────────────────────────────────────────────── */
+    .notice {
+      display: flex;
+      gap: 11px;
+      padding: 12px 15px;
+      border-radius: var(--radius-sm);
+      margin: 12px 0;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .notice .ni { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .notice.warn  { background: var(--yellow-dim); border: 1px solid rgba(251,191,36,0.2); }
+    .notice.info  { background: var(--blue-dim);   border: 1px solid rgba(106,168,201,0.2); }
+    .notice.ok    { background: var(--green-dim);  border: 1px solid rgba(82,183,136,0.2); }
+    .notice.danger{ background: var(--danger-dim); border: 1px solid rgba(248,113,113,0.2); }
+
+    /* ── Code ───────────────────────────────────────────────── */
+    .code-block {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 12.5px;
+      line-height: 1.75;
+      color: var(--text);
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    .code-block .c { color: var(--muted); }
+    .code-block .cmd { color: var(--green); }
+    .code-block .val { color: var(--yellow); }
+    code {
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 12px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 6px;
+      color: var(--accent);
+    }
+
+    /* ── Steps ──────────────────────────────────────────────── */
+    .steps { list-style: none; margin: 12px 0; padding: 0; }
+    .steps li {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .steps li .n {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+    .steps li strong { color: var(--text); }
+
+    /* ── Pill ───────────────────────────────────────────────── */
+    .pill {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .pill-green  { background: var(--green-dim);  color: var(--green); }
+    .pill-yellow { background: var(--yellow-dim); color: var(--yellow); }
+    .pill-orange { background: var(--accent-dim); color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <a class="logo" href="/">
+      <span class="logo-w">W</span><span class="logo-s">S</span> <span class="logo-bridge">Bridge</span>
+    </a>
+
+    <div class="nav-section">Категорії</div>
+    <a class="nav-link active" href="#whatsapp">📱 WhatsApp</a>
+    <a class="nav-link" href="#signal">🔵 Signal</a>
+    <a class="nav-link" href="#flows">⚡ Автоматизації</a>
+    <a class="nav-link" href="#general">⚙️ Загальне</a>
+
+    <div class="nav-section">Документація</div>
+    <a class="nav-link" href="/deploy.html" target="_blank">🚀 Розгортання</a>
+    <a class="nav-link" href="/">← Панель керування</a>
+
+    <div class="sidebar-foot">
+      <span class="sidebar-version">v1.5.0</span>
+      <span>FAQ / Довідка</span>
+    </div>
+  </nav>
+
+  <!-- ── Main ────────────────────────────────────────────── -->
+  <main class="main">
+    <h1 class="page-title">FAQ / Довідка</h1>
+    <p class="page-sub">Відповіді на часті питання по роботі WS Bridge.</p>
+
+    <!-- ══ WhatsApp ══════════════════════════════════════════ -->
+    <div class="cat-header" id="whatsapp">
+      <span class="cat-icon">📱</span>
+      <span class="cat-title">WhatsApp</span>
+      <div class="cat-line"></div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        WhatsApp показує «connecting» або «Аутентифікація…» вже кілька хвилин — що робити?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p><strong>Причина.</strong> WhatsApp Web.js керує браузером Chrome через Puppeteer. Послідовність старту виглядає так:</p>
+        <div class="code-block">
+          Запуск Chrome → Завантаження WhatsApp Web → Authenticated → [завантаження JS/DOM] → Client ready
+        </div>
+        <p>Якщо сесія збережена (папка <code>.wwebjs_auth</code>), крок «Authenticated» проходить одразу. Але далі браузер може зависнути на етапі завантаження сторінки — WhatsApp Web не відповідає подією <code>ready</code>. Про це свідчить <code>lastReadyAt: null</code> у стані.</p>
+        <p><strong>Найчастіша причина</strong> — WhatsApp оновив свій веб-додаток, і бібліотека тимчасово не може завершити ін'єкцію свого JS у сторінку. Також може бути: повільний інтернет, Chrome не встиг запуститися в headless-режимі.</p>
+
+        <p><strong>Кроки усунення (по порядку):</strong></p>
+        <ul class="steps">
+          <li>
+            <span class="n">1</span>
+            <span><strong>Перезапустити клієнт</strong> — панель → Інтеграція → карта WhatsApp → кнопка ↺ (або через API). Зачекати 20–30 сек. Вирішує у 90% випадків.</span>
+          </li>
+          <li>
+            <span class="n">2</span>
+            <span><strong>Видалити стару сесію</strong> — зупинити сервіс, видалити папку <code>.wwebjs_auth/</code>, запустити знову і відсканувати QR-код. Допомагає якщо сесія застаріла або пошкоджена.</span>
+          </li>
+          <li>
+            <span class="n">3</span>
+            <span><strong>Оновити бібліотеку</strong> — якщо проблема повторюється регулярно, вийшов патч:</span>
+          </li>
+        </ul>
+        <div class="code-block">
+          <span class="cmd">npm install</span> whatsapp-web.js@latest
+        </div>
+
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span><strong>Як розпізнати цю проблему у логах:</strong> є подія <code>Authenticated</code>, але немає <code>Client ready</code> протягом 3–5 хвилин після старту.</span>
+        </div>
+
+        <div class="notice warn">
+          <span class="ni">⚠️</span>
+          <span>Не копіюйте папку <code>.wwebjs_auth/</code> між комп'ютерами — сесія прив'язана до машини. На новому ПК завжди проходьте QR заново.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        WhatsApp відключився і статус змінився на «disconnected». Що робити?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>WhatsApp Web розриває з'єднання якщо телефон довго офлайн, або WhatsApp розлогінив пристрій вручну. Сервіс автоматично намагається перепідключитись.</p>
+        <p>Якщо автоматичне перепідключення не допомогло — перезапустіть клієнт через кнопку ↺ в панелі. Якщо з'явиться QR-код — відскануйте його знову.</p>
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span>Переконайтесь що телефон з WhatsApp онлайн і не вимкнено інтернет. Пов'язані пристрої можуть автономно працювати до 14 днів без телефону.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        QR-код не з'являється при старті.
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Можливі причини:</p>
+        <ul class="steps">
+          <li><span class="n">1</span><span>Chrome не встановлений або встановлений у нестандартну папку. Перевірте логи — там буде шлях до браузера.</span></li>
+          <li><span class="n">2</span><span>Антивірус блокує Puppeteer. Додайте папку проєкту у виключення.</span></li>
+          <li><span class="n">3</span><span>Стара сесія ще активна — клієнт авторизується без QR. Якщо хочете примусово отримати QR — видаліть <code>.wwebjs_auth/</code>.</span></li>
+        </ul>
+        <p>Для діагностики тимчасово увімкніть видимий Chrome — в <code>.env</code> поставте <code>HEADLESS=0</code> і перезапустіть сервіс.</p>
+      </div>
+    </div>
+
+    <!-- ══ Signal ═════════════════════════════════════════════ -->
+    <div class="cat-header" id="signal">
+      <span class="cat-icon">🔵</span>
+      <span class="cat-title">Signal</span>
+      <div class="cat-line"></div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Signal показує «connecting» — Docker не запущений?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Signal-міст працює через два Docker-контейнери. Якщо Docker Desktop не запущений або контейнери зупинені — Signal не може підключитись.</p>
+        <ul class="steps">
+          <li><span class="n">1</span><span>Відкрийте Docker Desktop і переконайтесь що він у статусі «Running».</span></li>
+          <li><span class="n">2</span><span>Запустіть контейнери:</span></li>
+        </ul>
+        <div class="code-block">
+          <span class="cmd">docker compose</span> -f docker-compose.signal.yml up -d
+        </div>
+        <ul class="steps">
+          <li><span class="n">3</span><span>Зачекайте 10–15 секунд — Signal у панелі покаже <span class="pill pill-green">connected</span>.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Повідомлення з Signal приходять із затримкою.
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Затримка залежить від двох параметрів у <code>.env</code> та <code>docker-compose.signal.yml</code>:</p>
+        <div class="code-block">
+          <span class="c"># .env — як часто Node.js опитує Signal bridge</span><br>
+          <span class="val">SIGNAL_POLL_MS</span>=1000<br><br>
+          <span class="c"># docker-compose.signal.yml — таймаут long-poll до signal-cli</span><br>
+          <span class="val">SIGNAL_RECEIVE_TIMEOUT_SEC</span>=20
+        </div>
+        <p>Оптимальні значення: <code>SIGNAL_POLL_MS=1000</code> + <code>SIGNAL_RECEIVE_TIMEOUT_SEC=20</code>. Після зміни <code>SIGNAL_RECEIVE_TIMEOUT_SEC</code> потрібно перебудувати контейнер:</p>
+        <div class="code-block">
+          <span class="cmd">docker compose</span> -f docker-compose.signal.yml up -d --build signal-bridge
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Після перенесення на новий ПК Signal потребує повторної прив'язки?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Дані Signal зберігаються у Docker volume <code>signal_cli_data</code>. Якщо ви <strong>не перенесли volume</strong> — так, потрібна повторна прив'язка через QR у панелі → Інтеграція → Signal → «Прив'язати».</p>
+        <p>Якщо хочете зберегти прив'язку при перенесенні — експортуйте volume:</p>
+        <div class="code-block">
+          <span class="c"># На старому ПК — зберегти</span><br>
+          <span class="cmd">docker run</span> --rm -v signal_cli_data:/data -v %cd%:/backup alpine tar czf /backup/signal_data.tar.gz /data<br><br>
+          <span class="c"># На новому ПК — відновити</span><br>
+          <span class="cmd">docker run</span> --rm -v signal_cli_data:/data -v %cd%:/backup alpine tar xzf /backup/signal_data.tar.gz -C /
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ Автоматизації ══════════════════════════════════════ -->
+    <div class="cat-header" id="flows">
+      <span class="cat-icon">⚡</span>
+      <span class="cat-title">Автоматизації</span>
+      <div class="cat-line"></div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Повідомлення не пересилаються — автоматизація є, але нічого не відбувається.
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Перевірте послідовно:</p>
+        <ul class="steps">
+          <li><span class="n">1</span><span><strong>Обидва месенджери підключені</strong> — статус <span class="pill pill-green">connected</span> у вкладці Інтеграція.</span></li>
+          <li><span class="n">2</span><span><strong>Автоматизація не на паузі</strong> — кнопка паузи у картці flow.</span></li>
+          <li><span class="n">3</span><span><strong>Правильний чат-джерело</strong> — перевірте налаштування автоматизації, чи обраний потрібний чат.</span></li>
+          <li><span class="n">4</span><span><strong>Фільтр ключових слів</strong> — якщо задані ключові слова, повідомлення має їх містити. Для пропуску всіх — поставте <code>*</code>.</span></li>
+          <li><span class="n">5</span><span><strong>Логи</strong> — вкладка «Логи» в панелі покаже де саме зупиняється обробка.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Зображення не пересилаються, тільки текст.
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>У налаштуваннях автоматизації є окремий чекбокс для медіа. Перевірте що він увімкнений:</p>
+        <p>Панель → Автоматизації → редагувати flow → вкладка <strong>«Додатково»</strong> → ✅ <strong>«Пересилати зображення з повідомлення»</strong>.</p>
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span>Якщо ви відправляєте фото і текст окремими повідомленнями (не як фото з підписом) — бот обробляє їх як два окремих повідомлення. Текстове повідомлення не містить медіа (<code>hasMedia: false</code>), тому пересилається без фото. Надсилайте фото разом із підписом — тоді всі дані в одному повідомленні.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Можна зробити кілька автоматизацій з одного джерела?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Так. Сервіс підтримує кілька автоматизацій з одним і тим самим чатом-джерелом — усі вони спрацьовують одночасно при отриманні повідомлення.</p>
+        <p>Наприклад: один чат Signal може одночасно пересилати у групу WhatsApp A і у групу WhatsApp B через дві окремі автоматизації.</p>
+        <div class="notice ok">
+          <span class="ni">✅</span>
+          <span>Просто створіть ще одну автоматизацію з тим самим чатом-джерелом і іншим цільовим чатом.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ Загальне ════════════════════════════════════════════ -->
+    <div class="cat-header" id="general">
+      <span class="cat-icon">⚙️</span>
+      <span class="cat-title">Загальне</span>
+      <div class="cat-line"></div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Порт 3001 зайнятий — сервіс не запускається (EADDRINUSE).
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Інший процес вже використовує порт 3001 (наприклад, запущена ще одна копія сервісу).</p>
+        <div class="code-block">
+          <span class="c"># Знайти процес на порту 3001</span><br>
+          <span class="cmd">netstat</span> -ano | findstr :3001<br><br>
+          <span class="c"># Завершити процес за PID</span><br>
+          <span class="cmd">taskkill</span> /PID &lt;номер&gt; /F
+        </div>
+        <p>Або змініть порт у <code>.env</code>: <code>PORT=3002</code> (але тоді і Signal bridge потрібно перенести на інший порт).</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Де зберігаються автоматизації та чат-каталог?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Всі дані зберігаються у папці <code>data/</code> у корені проєкту:</p>
+        <div class="code-block">
+          data/flows.json&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">← автоматизації</span><br>
+          data/chat-directory.json&nbsp;&nbsp;<span class="c">← каталог чатів</span><br>
+          data/whatsapp-chats-cache.json&nbsp;<span class="c">← кеш чатів WA</span><br>
+          data/signal-chats-cache.json&nbsp;&nbsp;<span class="c">← кеш чатів Signal</span>
+        </div>
+        <p>При перенесенні на інший ПК скопіюйте цю папку щоб зберегти всі налаштування.</p>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Як переглянути детальні логи для діагностики?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p>Три місця де шукати інформацію:</p>
+        <ul class="steps">
+          <li><span class="n">1</span><span><strong>Панель → вкладка «Логи»</strong> — всі події в реальному часі з фільтрацією по рівню (INFO / WARN / ERROR).</span></li>
+          <li><span class="n">2</span><span><strong>Термінал</strong> де запущений <code>node index.cjs</code> — повний stdout із додатковими <code>[ROUTING]</code> та <code>[ROUTER CHECK]</code> мітками.</span></li>
+          <li><span class="n">3</span><span><strong>Docker Desktop</strong> → контейнер <code>signal-bridge</code> → вкладка Logs — логи Signal-моста.</span></li>
+        </ul>
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span>Файл <code>logs/signal_raw.ndjson</code> містить сирі Signal-повідомлення у форматі NDJSON — корисно для перевірки що саме приходить від signal-cli.</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  function toggle(btn) {
+    const body = btn.nextElementSibling;
+    const isOpen = btn.classList.contains('open');
+    btn.classList.toggle('open', !isOpen);
+    body.classList.toggle('open', !isOpen);
+  }
+
+  // Highlight active nav link based on scroll
+  const sections = document.querySelectorAll('.cat-header[id]');
+  const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+  window.addEventListener('scroll', () => {
+    let current = '';
+    sections.forEach(s => { if (window.scrollY >= s.offsetTop - 80) current = s.id; });
+    navLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + current));
+  });
+
+  // Open item if hash matches (future use)
+  if (location.hash) {
+    const target = document.querySelector(location.hash);
+    if (target && target.classList.contains('faq-q')) {
+      target.click();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+</script>
+</body>
+</html>

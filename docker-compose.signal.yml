@@ -5,6 +5,10 @@ services:
     image: bbernhard/signal-cli-rest-api:latest
     container_name: signal-cli-api
     restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -c
+      - while true; do rm -rf /tmp/libsignal*; sleep 3600; done & exec /entrypoint.sh
     ports:
       - "8080:8080"
     environment:

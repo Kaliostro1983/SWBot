@@ -71,27 +71,31 @@ function safeFileStamp() {
 function rotateAndClearFile(filePath) {
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (fs.existsSync(filePath)) {
-      const stat = fs.statSync(filePath);
-      if (stat.isFile() && stat.size > 0) {
-        const ext = path.extname(filePath);
-        const base = filePath.slice(0, -ext.length);
-        const rotated = `${base}.${safeFileStamp()}${ext || '.log'}`;
-        try {
-          fs.renameSync(filePath, rotated);
-        } catch {
-          // If rename fails (e.g. locked), fall back to truncation.
-        }
-      }
-    }
-    // Ensure current session starts with an empty file.
+    // Просто очищаємо поточний файл — старі ротовані файли прибирає cleanOldLogs().
     fs.writeFileSync(filePath, '', 'utf8');
   } catch {
     // Never break startup because of log rotation.
   }
 }
 
+function cleanOldLogs() {
+  // Видаляємо всі ротовані файли логів попередніх сесій.
+  // Залишаємо тільки bot.log, signal_raw.ndjson, health.json та server.log.
+  try {
+    const files = fs.readdirSync(LOG_DIR);
+    for (const f of files) {
+      // Ротовані файли мають вигляд: bot.2026-03-27T....log або signal_raw.2026-...ndjson
+      if (/^bot\.\d{4}-/.test(f) || /^signal_raw\.\d{4}-/.test(f)) {
+        try { fs.unlinkSync(path.join(LOG_DIR, f)); } catch { /* ignore */ }
+      }
+    }
+  } catch {
+    // Never break startup because of log cleanup.
+  }
+}
+
 function clearLogsOnStartup() {
+  cleanOldLogs();
   rotateAndClearFile(LOG_FILE);
   rotateAndClearFile(SIGNAL_RAW_LOG_FILE);
 }
@@ -554,14 +558,14 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
   }
 }
 
-function findSignalFlowByIncomingCandidates(message) {
+function findSignalFlowsByIncomingCandidates(message) {
   console.log('[ROUTER CHECK]', {
     text: message.text,
     chatId: message.chatId,
     platform: message.platform,
     flowsCount: flows.length
   });
-  const matched = flows.find((f) => {
+  const matched = flows.filter((f) => {
     const p = inferPlatforms(f);
     if (p.sourcePlatform !== 'signal') return false;
     if (f.debugCatchAllSignal === true) return false;
@@ -579,7 +583,7 @@ function findSignalFlowByIncomingCandidates(message) {
     }
     return flowMatchesMessage(f, message).matched;
   });
-  if (matched) return matched;
+  if (matched.length > 0) return matched;
   const debugFallback = flows.find(
     (f) => f.id === 'debug_signal' && f.debugCatchAllSignal === true && !f.paused
   );
@@ -591,9 +595,9 @@ function findSignalFlowByIncomingCandidates(message) {
       flowsCount: flows.length,
       matchedFallback: 'debug_signal'
     });
-    return debugFallback;
+    return [debugFallback];
   }
-  return undefined;
+  return [];
 }
 
 function generateFlowId() {
@@ -2127,11 +2131,16 @@ async function checkSignalLinkedStatus() {
   }
 }
 
-async function sendSignalMessage(chatId, text) {
+async function sendSignalMessage(chatId, text, base64Attachments = []) {
   await signalApiRequest('post', '/send', {
     chatId,
-    text
+    text,
+    base64Attachments
   });
+}
+
+async function downloadSignalAttachment(attachmentId) {
+  return signalApiRequest('get', `/attachment/${encodeURIComponent(attachmentId)}`, undefined, undefined, 60000);
 }
 
 async function requestSignalLinkQr(deviceName, options = {}) {
@@ -2372,14 +2381,37 @@ async function forwardWaToSignal(flow, msg) {
     return;
   }
   const text = String(msg.body || '').trim();
-  if (!text) {
-    pushLog('INFO', 'WA→Signal: порожній текст, пропуск', { flowId: flow.id });
+
+  // Download WA media attachment if enabled
+  const base64Attachments = [];
+  if (flow.sendAttachments && msg.hasMedia) {
+    try {
+      const media = await msg.downloadMedia();
+      if (media?.data) {
+        const mime = String(media.mimetype || 'application/octet-stream').trim();
+        base64Attachments.push(`data:${mime};base64,${media.data}`);
+      }
+    } catch (e) {
+      pushLog('WARN', 'WA→Signal: не вдалося завантажити медіа', {
+        flowId: flow.id,
+        error: e.message
+      });
+    }
+  }
+
+  if (!text && base64Attachments.length === 0) {
+    pushLog('INFO', 'WA→Signal: порожній текст і немає вкладень, пропуск', { flowId: flow.id });
     return;
   }
-  await sendSignalMessage(target, text);
+
+  await sendSignalMessage(target, text, base64Attachments);
   state.lastSendAt = nowIso();
   state.counters.sent += 1;
-  pushLog('INFO', 'Forward sent (signal)', { targetChat: target, length: text.length });
+  pushLog('INFO', 'WA→Signal sent', {
+    targetChat: target,
+    textLen: text.length,
+    attachmentsCount: base64Attachments.length
+  });
 }
 
 async function postToFastAPI(payload, url = FASTAPI_URL) {
@@ -2421,7 +2453,7 @@ async function processSignalIncomingMessage(message) {
     );
   }
   const isTestProbe = /\btest\b/i.test(rawText);
-  let flow = findSignalFlowByIncomingCandidates(message);
+  let matchedFlows = findSignalFlowsByIncomingCandidates(message);
   if (isTestProbe) {
     pushLogThrottled(
       `signal_test_probe_pre_${chatId}`,
@@ -2432,13 +2464,13 @@ async function processSignalIncomingMessage(message) {
         text: rawText.slice(0, 120),
         chatId,
         chatCandidates: Array.from(incomingCandidates).slice(0, 12),
-        matchedFlow: flow ? { id: flow.id, name: flow.name } : null
+        matchedFlows: matchedFlows.map((f) => ({ id: f.id, name: f.name }))
       }
     );
   }
-  if (!flow && AUTO_SIGNAL_SOURCE_AUTOREMAP) {
+  if (matchedFlows.length === 0 && AUTO_SIGNAL_SOURCE_AUTOREMAP) {
     autoRemapSignalFlowsFromDirectory(false);
-    flow = findSignalFlowByIncomingCandidates(message);
+    matchedFlows = findSignalFlowsByIncomingCandidates(message);
     if (isTestProbe) {
       pushLogThrottled(
         `signal_test_probe_post_${chatId}`,
@@ -2447,12 +2479,12 @@ async function processSignalIncomingMessage(message) {
         'Signal test probe after remap check',
         {
           chatId,
-          matchedFlow: flow ? { id: flow.id, name: flow.name } : null
+          matchedFlows: matchedFlows.map((f) => ({ id: f.id, name: f.name }))
         }
       );
     }
   }
-  if (!flow) {
+  if (matchedFlows.length === 0) {
     const configuredSignalSources = flows
       .filter((f) => inferPlatforms(f).sourcePlatform === 'signal')
       .flatMap((f) => getSourceIds(f));
@@ -2470,19 +2502,20 @@ async function processSignalIncomingMessage(message) {
     );
     return;
   }
-  pushLog('INFO', 'Signal flow selected', {
-    platform: 'signal',
-    chatId,
-    incomingChatKey,
-    flowId: flow.id,
-    flowName: flow.name,
-    expectedSourceChatKey: String(flow.sourceChatKey || '').trim() || null
-  });
 
   state.lastEventAt = nowIso();
   state.lastMessageAt = nowIso();
   state.counters.received += 1;
 
+  pushLog('INFO', 'Signal flows matched', {
+    platform: 'signal',
+    chatId,
+    incomingChatKey,
+    matchedCount: matchedFlows.length,
+    flows: matchedFlows.map((f) => ({ id: f.id, name: f.name }))
+  });
+
+  await Promise.all(matchedFlows.map(async (flow) => {
   if (flow.paused) {
     pushLog('INFO', 'Signal skipped: flow paused', { flowId: flow.id, flowName: flow.name });
     noteIgnored('signal_paused');
@@ -2507,11 +2540,36 @@ async function processSignalIncomingMessage(message) {
   if (p.targetPlatform === 'signal') {
     const target = String(flow.targetChatId || '').trim();
     if (!target) return;
-    if (!rawText) return;
-    await sendSignalMessage(target, rawText);
+    const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+    if (!rawText && !(flow.sendAttachments && hasAttachments)) return;
+
+    let base64Attachments = [];
+    if (flow.sendAttachments && hasAttachments) {
+      for (const att of message.attachments) {
+        if (!att.id) continue;
+        try {
+          const dl = await downloadSignalAttachment(att.id);
+          if (dl?.ok && dl.base64) {
+            const mime = String(dl.contentType || att.contentType || 'application/octet-stream').trim();
+            base64Attachments.push(`data:${mime};base64,${dl.base64}`);
+          }
+        } catch (e) {
+          pushLog('WARN', 'Signal attachment download failed', {
+            attachmentId: att.id,
+            error: e.message || String(e)
+          });
+        }
+      }
+    }
+
+    await sendSignalMessage(target, rawText, base64Attachments);
     state.lastSendAt = nowIso();
     state.counters.sent += 1;
-    pushLog('INFO', 'Signal→Signal sent', { flowId: flow.id, targetChat: target });
+    pushLog('INFO', 'Signal→Signal sent', {
+      flowId: flow.id,
+      targetChat: target,
+      attachmentsCount: base64Attachments.length
+    });
     return;
   }
 
@@ -2527,11 +2585,19 @@ async function processSignalIncomingMessage(message) {
       await sendWithRateLimit(target, rawText);
       pushLog('INFO', 'Signal→WA sent', { flowId: flow.id, targetChat: target, result: 'sent' });
     } catch (err) {
-      pushLog('ERROR', 'Signal→WA failed', {
-        flowId: flow.id,
-        targetChat: target,
-        message: err?.message || String(err)
-      });
+      if (isWaTransientDetachedFrameError(err)) {
+        pushLog('ERROR', 'Signal→WA failed: detached frame, restarting WA', {
+          flowId: flow.id,
+          targetChat: target
+        });
+        handleWaDetachedFrame('Signal→WA send').catch(() => {});
+      } else {
+        pushLog('ERROR', 'Signal→WA failed', {
+          flowId: flow.id,
+          targetChat: target,
+          message: err?.message || String(err)
+        });
+      }
     }
     return;
   }
@@ -2577,6 +2643,7 @@ async function processSignalIncomingMessage(message) {
       await sendWithRateLimit(targetChat, txt);
     }
   }
+  })); // end Promise.all matchedFlows
 }
 
 async function pollSignalMessages() {
@@ -2791,7 +2858,7 @@ function attachClientEvents(instance) {
         text: rawText
       });
 
-      let flow = null;
+      let matchedWaFlows = [];
       if (flows.length > 0) {
         const routeMessage = {
           platform: 'whatsapp',
@@ -2799,12 +2866,12 @@ function attachClientEvents(instance) {
           chatCandidates: [chatId],
           senderId: msg.author || msg.from || null
         };
-        flow = flows.find((f) => {
+        matchedWaFlows = flows.filter((f) => {
           const p = inferPlatforms(f);
           if (p.sourcePlatform !== 'whatsapp') return false;
           return flowMatchesMessage(f, routeMessage).matched;
         });
-        if (!flow) return;
+        if (matchedWaFlows.length === 0) return;
       } else {
         if (!SOURCE_CHAT || chatId !== SOURCE_CHAT) return;
         let kwE = SOURCE_FILTER_KEYWORDS;
@@ -2815,7 +2882,7 @@ function attachClientEvents(instance) {
         ) {
           kwE = '*';
         }
-        flow = {
+        matchedWaFlows = [{
           id: '_env',
           name: 'Змінні середовища',
           direction: 'wa_fastapi',
@@ -2828,12 +2895,13 @@ function attachClientEvents(instance) {
           paused: false,
           keywords: kwE,
           frequencies: frE
-        };
+        }];
       }
 
       // KPI statistics count only messages that match configured source chats.
       state.counters.received += 1;
 
+      await Promise.all(matchedWaFlows.map(async (flow) => {
       if (flow.paused === true) {
         noteIgnored('wa_paused');
         pushLog('INFO', 'Автоматизація на паузі', {
@@ -2996,6 +3064,7 @@ function attachClientEvents(instance) {
           pushLog('ERROR', 'Додаткове медіа після actions', { message: err.message });
         }
       }
+      })); // end Promise.all matchedWaFlows
     } catch (error) {
       if (error.response) {
         pushLog('ERROR', 'message_create handler failed (HTTP)', {
@@ -3092,6 +3161,23 @@ async function startBot() {
   } finally {
     isStarting = false;
   }
+}
+
+let waDetachedRecoveryScheduled = false;
+async function handleWaDetachedFrame(source) {
+  if (waDetachedRecoveryScheduled) return;
+  waDetachedRecoveryScheduled = true;
+  pushLog('WARN', 'WA detached frame — scheduling restart', { source });
+  state.ready = false;
+  setStatus('disconnected');
+  try { await client.destroy(); } catch {}
+  client = null;
+  setTimeout(() => {
+    waDetachedRecoveryScheduled = false;
+    startBot().catch((e) =>
+      pushLog('ERROR', 'WA restart after detached frame failed', { message: e?.message || String(e) })
+    );
+  }, 3000);
 }
 
 async function stopBot() {

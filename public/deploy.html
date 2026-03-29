@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WA Bridge — Інструкція розгортання</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #1C1917;
+      --panel: #28211E;
+      --panel2: #211A17;
+      --border: rgba(255,255,255,0.07);
+      --border-strong: rgba(255,255,255,0.12);
+      --text: #F5F0ED;
+      --muted: #A8998F;
+      --accent: #CC785C;
+      --accent-hover: #D4896C;
+      --accent-dim: rgba(204,120,92,0.14);
+      --green: #52B788;
+      --green-dim: rgba(82,183,136,0.12);
+      --blue: #6AA8C9;
+      --blue-dim: rgba(106,168,201,0.12);
+      --yellow: #FBBF24;
+      --yellow-dim: rgba(251,191,36,0.10);
+      --danger: #F87171;
+      --danger-dim: rgba(248,113,113,0.10);
+      --radius: 18px;
+      --radius-sm: 12px;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────── */
+    .app { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 232px;
+      flex-shrink: 0;
+      background: var(--panel2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 22px 12px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+    .logo {
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: -0.025em;
+      margin-bottom: 24px;
+      padding: 0 10px;
+    }
+    .logo .logo-w { color: #52B788; }
+    .logo .logo-s { color: #6AA8C9; }
+    .logo .logo-bridge { color: var(--muted); font-weight: 500; }
+    .nav-section {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 8px 14px 6px;
+      margin-top: 8px;
+    }
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      width: 100%;
+      padding: 9px 14px;
+      margin-bottom: 2px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-link:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .nav-link.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav-link .step-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.07);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nav-link.done .step-num { background: var(--green-dim); color: var(--green); }
+    .sidebar-foot {
+      margin-top: auto;
+      padding: 12px 10px 0;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .sidebar-version {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--accent);
+      opacity: 0.85;
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 40px 48px 80px;
+      max-width: 860px;
+    }
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { padding: 24px 20px 60px; }
+    }
+
+    /* ── Typography ─────────────────────────────────────────── */
+    .page-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0 0 8px;
+    }
+    .page-sub {
+      font-size: 14px;
+      color: var(--muted);
+      margin: 0 0 40px;
+      line-height: 1.6;
+    }
+    h2.section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      scroll-margin-top: 24px;
+    }
+    h2.section-title .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    p { margin: 0 0 12px; line-height: 1.65; font-size: 14px; color: var(--muted); }
+    p strong { color: var(--text); font-weight: 600; }
+
+    /* ── Divider ────────────────────────────────────────────── */
+    .section-block {
+      margin-bottom: 40px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-block:last-child { border-bottom: none; }
+
+    /* ── Cards ──────────────────────────────────────────────── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.18);
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    /* ── Req badges ─────────────────────────────────────────── */
+    .req-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.025);
+    }
+    .req-icon {
+      font-size: 20px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .req-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .req-desc { font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .req-link { color: var(--accent); text-decoration: none; font-weight: 500; }
+    .req-link:hover { text-decoration: underline; }
+
+    /* ── Code blocks ────────────────────────────────────────── */
+    .code-block {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+      margin: 10px 0 14px;
+      overflow-x: auto;
+      position: relative;
+    }
+    .code-block .comment { color: var(--muted); }
+    .code-block .cmd { color: #52B788; }
+    .code-block .val { color: #FBBF24; }
+    .code-block .key { color: #6AA8C9; }
+    .code-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    code {
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 12.5px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 7px;
+      color: var(--accent);
+    }
+
+    /* ── Notice boxes ────────────────────────────────────────── */
+    .notice {
+      display: flex;
+      gap: 12px;
+      padding: 13px 16px;
+      border-radius: var(--radius-sm);
+      margin: 12px 0;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .notice .icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+    .notice.warn {
+      background: var(--yellow-dim);
+      border: 1px solid rgba(251,191,36,0.2);
+      color: var(--text);
+    }
+    .notice.info {
+      background: var(--blue-dim);
+      border: 1px solid rgba(106,168,201,0.2);
+      color: var(--text);
+    }
+    .notice.ok {
+      background: var(--green-dim);
+      border: 1px solid rgba(82,183,136,0.2);
+      color: var(--text);
+    }
+    .notice.danger {
+      background: var(--danger-dim);
+      border: 1px solid rgba(248,113,113,0.2);
+      color: var(--text);
+    }
+
+    /* ── Steps ──────────────────────────────────────────────── */
+    .step-list { list-style: none; margin: 0; padding: 0; }
+    .step-list li {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .step-list li .bullet {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-list li strong { color: var(--text); }
+
+    /* ── File tree ──────────────────────────────────────────── */
+    .file-tree {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 13px;
+      line-height: 2;
+      margin: 10px 0 14px;
+    }
+    .file-tree .dir { color: var(--blue); font-weight: 600; }
+    .file-tree .file { color: var(--text); }
+    .file-tree .req { color: var(--accent); font-weight: 600; }
+    .file-tree .opt { color: var(--muted); }
+    .file-tree .badge-tag {
+      font-size: 10px;
+      font-weight: 700;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-radius: 5px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+      font-family: var(--font);
+    }
+    .file-tree .badge-opt {
+      font-size: 10px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      border-radius: 5px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+      font-family: var(--font);
+    }
+
+    /* ── Pill labels ────────────────────────────────────────── */
+    .pill {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 9px;
+      border-radius: 999px;
+    }
+    .pill-green { background: var(--green-dim); color: var(--green); }
+    .pill-blue  { background: var(--blue-dim);  color: var(--blue); }
+    .pill-orange{ background: var(--accent-dim);color: var(--accent); }
+    .pill-yellow{ background: var(--yellow-dim);color: var(--yellow); }
+
+    /* ── Env table ──────────────────────────────────────────── */
+    .env-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 14px; }
+    .env-table th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .env-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .env-table tr:last-child td { border-bottom: none; }
+    .env-table .env-key { font-family: 'Consolas', monospace; color: var(--blue); font-weight: 600; white-space: nowrap; }
+    .env-table .env-default { font-family: 'Consolas', monospace; color: var(--accent); font-size: 12px; }
+    .env-table .env-desc { color: var(--muted); }
+    .env-table .env-req { color: var(--danger); font-size: 10px; font-weight: 700; }
+
+    /* ── Port table ─────────────────────────────────────────── */
+    .port-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .port-row:last-child { border-bottom: none; }
+    .port-num {
+      font-family: 'Consolas', monospace;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 60px;
+    }
+    .port-name { color: var(--text); font-weight: 500; flex: 1; }
+    .port-desc { color: var(--muted); font-size: 12px; }
+
+    /* ── Checkmark list ─────────────────────────────────────── */
+    .check-list { list-style: none; margin: 10px 0; padding: 0; }
+    .check-list li {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+    .check-list li::before {
+      content: '✓';
+      color: var(--green);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .check-list li strong { color: var(--text); }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="logo">
+      <span class="logo-w">WA</span><span class="logo-s">·S</span> <span class="logo-bridge">Bridge</span>
+    </div>
+
+    <div class="nav-section">Розгортання</div>
+    <a class="nav-link" href="#requirements"><span class="step-num">1</span>Вимоги</a>
+    <a class="nav-link" href="#files"><span class="step-num">2</span>Файли</a>
+    <a class="nav-link" href="#install"><span class="step-num">3</span>Встановлення</a>
+    <a class="nav-link" href="#env"><span class="step-num">4</span>Конфігурація .env</a>
+    <a class="nav-link" href="#docker"><span class="step-num">5</span>Docker / Signal</a>
+    <a class="nav-link" href="#start"><span class="step-num">6</span>Запуск сервісу</a>
+
+    <div class="nav-section">Підключення</div>
+    <a class="nav-link" href="#whatsapp"><span class="step-num">7</span>WhatsApp</a>
+    <a class="nav-link" href="#signal"><span class="step-num">8</span>Signal</a>
+
+    <div class="nav-section">Довідка</div>
+    <a class="nav-link" href="#ports"><span class="step-num">i</span>Порти</a>
+    <a class="nav-link" href="#troubleshoot"><span class="step-num">!</span>Проблеми</a>
+
+    <div class="sidebar-foot">
+      <span class="sidebar-version">v1.5.0</span>
+      <span>Інструкція розгортання</span>
+    </div>
+  </nav>
+
+  <!-- ── Main ────────────────────────────────────────────── -->
+  <main class="main">
+    <h1 class="page-title">Розгортання на новому комп'ютері</h1>
+    <p class="page-sub">Покрокова інструкція встановлення WA·Signal Bridge з нуля. Займає 10–20 хвилин.</p>
+
+    <!-- ═══ 1. Вимоги ══════════════════════════════════════ -->
+    <div class="section-block" id="requirements">
+      <h2 class="section-title"><span class="num">1</span>Системні вимоги</h2>
+
+      <div class="grid-2">
+        <div class="req-item">
+          <div class="req-icon">🟢</div>
+          <div>
+            <div class="req-name">Node.js 18 або новіший</div>
+            <div class="req-desc">Перевірити: <code>node -v</code><br>
+              <a class="req-link" href="https://nodejs.org" target="_blank">nodejs.org</a>
+            </div>
+          </div>
+        </div>
+        <div class="req-item">
+          <div class="req-icon">🐳</div>
+          <div>
+            <div class="req-name">Docker Desktop</div>
+            <div class="req-desc">Потрібен для Signal-контейнерів<br>
+              <a class="req-link" href="https://www.docker.com/products/docker-desktop" target="_blank">docker.com</a>
+            </div>
+          </div>
+        </div>
+        <div class="req-item">
+          <div class="req-icon">🌐</div>
+          <div>
+            <div class="req-name">Google Chrome</div>
+            <div class="req-desc">Для WhatsApp Web (Puppeteer)<br>
+              <a class="req-link" href="https://www.google.com/chrome" target="_blank">google.com/chrome</a>
+            </div>
+          </div>
+        </div>
+        <div class="req-item">
+          <div class="req-icon">📱</div>
+          <div>
+            <div class="req-name">Телефони з WA та Signal</div>
+            <div class="req-desc">Для початкового сканування QR-коду та прив'язки пристрою</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notice info">
+        <span class="icon">💡</span>
+        <span><strong>ОС:</strong> Windows 10/11 (x64). Node.js краще встановлювати через <a class="req-link" href="https://github.com/coreybutler/nvm-windows" target="_blank">nvm-windows</a>, щоб легко оновлювати версію.</span>
+      </div>
+    </div>
+
+    <!-- ═══ 2. Файли ════════════════════════════════════════ -->
+    <div class="section-block" id="files">
+      <h2 class="section-title"><span class="num">2</span>Копіювання файлів</h2>
+
+      <p>Скопіюйте папку проєкту на новий ПК. Папку <code>node_modules</code> та <code>.wwebjs_auth</code> копіювати <strong>не потрібно</strong> — вони створяться автоматично.</p>
+
+      <div class="file-tree">
+        <span class="dir">whatsapp-bot/</span><br>
+        &nbsp;&nbsp;├── <span class="req">index.cjs</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="req">package.json</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="req">docker-compose.signal.yml</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="req">.env</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="dir">public/</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="dir">signal-bridge/</span><span class="badge-tag">обов'язково</span><br>
+        &nbsp;&nbsp;├── <span class="dir">data/</span><span class="badge-opt">міграція</span>&nbsp;<span class="opt">← flows.json, чат-каталог</span><br>
+        &nbsp;&nbsp;├── <span class="opt">node_modules/</span>&nbsp;<span class="opt">← НЕ копіювати</span><br>
+        &nbsp;&nbsp;└── <span class="opt">.wwebjs_auth/</span>&nbsp;<span class="opt">← НЕ копіювати (WA-сесія)</span>
+      </div>
+
+      <div class="notice warn">
+        <span class="icon">⚠️</span>
+        <span>Папку <strong>data/</strong> копіюйте лише якщо хочете перенести існуючі автоматизації та чат-каталог. Якщо починаєте з нуля — вона створюється автоматично при першому запуску.</span>
+      </div>
+    </div>
+
+    <!-- ═══ 3. Встановлення ═════════════════════════════════ -->
+    <div class="section-block" id="install">
+      <h2 class="section-title"><span class="num">3</span>Встановлення залежностей</h2>
+
+      <p>Відкрийте термінал у папці проєкту та виконайте:</p>
+
+      <div class="code-label">Термінал (cmd / PowerShell)</div>
+      <div class="code-block">
+        <span class="comment"># Перейти до папки проєкту</span><br>
+        <span class="cmd">cd</span> <span class="val">D:\Armor\whatsapp-bot</span><br><br>
+        <span class="comment"># Встановити npm-залежності</span><br>
+        <span class="cmd">npm install</span>
+      </div>
+
+      <p>Це займе 1–3 хвилини. Після завершення в папці з'явиться <code>node_modules/</code>.</p>
+
+      <div class="notice ok">
+        <span class="icon">✅</span>
+        <span>Команда не повинна виводити помилок. Попередження (warn) — це нормально.</span>
+      </div>
+    </div>
+
+    <!-- ═══ 4. Конфігурація .env ════════════════════════════ -->
+    <div class="section-block" id="env">
+      <h2 class="section-title"><span class="num">4</span>Файл конфігурації <code>.env</code></h2>
+
+      <p>Створіть файл <code>.env</code> у корені проєкту (або скопіюйте <code>.env.example</code> і заповніть). Якщо переносите з іншого ПК — просто скопіюйте наявний <code>.env</code>.</p>
+
+      <div class="code-label">Мінімальний .env</div>
+      <div class="code-block">
+        <span class="key">PORT</span>=<span class="val">3001</span><br>
+        <span class="key">HEADLESS</span>=<span class="val">1</span><br><br>
+        <span class="comment"># Захист панелі керування</span><br>
+        <span class="key">PANEL_USER</span>=<span class="val">user</span><br>
+        <span class="key">PANEL_PASSWORD</span>=<span class="val">your_password</span><br><br>
+        <span class="comment"># Signal bridge (локальний Docker)</span><br>
+        <span class="key">SIGNAL_API_URL</span>=<span class="val">http://localhost:3002</span><br>
+        <span class="key">SIGNAL_POLL_MS</span>=<span class="val">5000</span><br><br>
+        <span class="comment"># FastAPI (якщо використовується)</span><br>
+        <span class="key">FASTAPI_URL</span>=<span class="val">http://127.0.0.1:8000/api/ingest/whatsapp</span>
+      </div>
+
+      <table class="env-table">
+        <thead>
+          <tr>
+            <th>Змінна</th>
+            <th>За замовч.</th>
+            <th>Опис</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="env-key">PORT</td>
+            <td class="env-default">3001</td>
+            <td class="env-desc">Порт панелі керування</td>
+          </tr>
+          <tr>
+            <td class="env-key">HEADLESS</td>
+            <td class="env-default">1</td>
+            <td class="env-desc"><code>1</code> — Chrome у фоні, <code>0</code> — з вікном (для дебагу)</td>
+          </tr>
+          <tr>
+            <td class="env-key">PANEL_USER</td>
+            <td class="env-default">—</td>
+            <td class="env-desc">Логін панелі. Якщо порожній — панель без пароля</td>
+          </tr>
+          <tr>
+            <td class="env-key">PANEL_PASSWORD</td>
+            <td class="env-default">—</td>
+            <td class="env-desc">Пароль панелі</td>
+          </tr>
+          <tr>
+            <td class="env-key">SIGNAL_API_URL</td>
+            <td class="env-default">http://localhost:3002</td>
+            <td class="env-desc">Адреса Signal bridge (Docker)</td>
+          </tr>
+          <tr>
+            <td class="env-key">SIGNAL_POLL_MS</td>
+            <td class="env-default">5000</td>
+            <td class="env-desc">Інтервал опитування Signal (мс)</td>
+          </tr>
+          <tr>
+            <td class="env-key">FASTAPI_URL</td>
+            <td class="env-default">—</td>
+            <td class="env-desc">URL FastAPI-бекенду (якщо є автоматизації → FastAPI)</td>
+          </tr>
+          <tr>
+            <td class="env-key">SEND_PREFIX</td>
+            <td class="env-default">#go</td>
+            <td class="env-desc">Префікс для дозволу пересилання</td>
+          </tr>
+          <tr>
+            <td class="env-key">SEND_DELAY_MS</td>
+            <td class="env-default">2000</td>
+            <td class="env-desc">Затримка між відправками WA (мс)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ═══ 5. Docker / Signal ══════════════════════════════ -->
+    <div class="section-block" id="docker">
+      <h2 class="section-title"><span class="num">5</span>Запуск Docker-контейнерів Signal</h2>
+
+      <p>Signal-міст працює через два Docker-контейнери: <strong>signal-cli-api</strong> (Signal-протокол) і <strong>signal-bridge</strong> (HTTP-обгортка).</p>
+
+      <div class="notice warn">
+        <span class="icon">⚠️</span>
+        <span>Перед виконанням команд переконайтесь, що <strong>Docker Desktop запущений</strong> і показує статус «Running» в треї.</span>
+      </div>
+
+      <p>Відкрийте <code>docker-compose.signal.yml</code> і перевірте номер телефону Signal:</p>
+
+      <div class="code-label">docker-compose.signal.yml — рядок для перевірки</div>
+      <div class="code-block">
+        <span class="key">SIGNAL_ACCOUNT_NUMBER</span>=<span class="val">+380XXXXXXXXX</span>&nbsp;&nbsp;<span class="comment"># ← номер облікового запису Signal</span>
+      </div>
+
+      <p>Потім запустіть контейнери:</p>
+
+      <div class="code-label">Термінал — у папці проєкту</div>
+      <div class="code-block">
+        <span class="comment"># Перший запуск (або після змін у docker-compose)</span><br>
+        <span class="cmd">docker compose</span> -f docker-compose.signal.yml up -d --build<br><br>
+        <span class="comment"># Наступні запуски (без rebuild)</span><br>
+        <span class="cmd">docker compose</span> -f docker-compose.signal.yml up -d<br><br>
+        <span class="comment"># Перевірити що контейнери запущені</span><br>
+        <span class="cmd">docker ps</span>
+      </div>
+
+      <p>Очікувані контейнери у виводі <code>docker ps</code>:</p>
+
+      <div class="card">
+        <div class="port-row">
+          <span class="port-num">signal-cli-api</span>
+          <span class="port-name">Signal CLI REST API</span>
+          <span class="port-desc">порт 8080 (внутрішній)</span>
+        </div>
+        <div class="port-row">
+          <span class="port-num">signal-bridge</span>
+          <span class="port-name">HTTP-міст для Node.js</span>
+          <span class="port-desc">порт 3002 → localhost:3002</span>
+        </div>
+      </div>
+
+      <div class="notice info">
+        <span class="icon">💡</span>
+        <span>При <strong>першому запуску</strong> на новому ПК Signal потрібно буде прив'язати — дивіться крок 8. Дані Signal зберігаються у Docker volume <code>signal_cli_data</code> і залишаються між перезапусками.</span>
+      </div>
+    </div>
+
+    <!-- ═══ 6. Запуск сервісу ════════════════════════════════ -->
+    <div class="section-block" id="start">
+      <h2 class="section-title"><span class="num">6</span>Запуск основного сервісу</h2>
+
+      <div class="code-label">Термінал — у папці проєкту</div>
+      <div class="code-block">
+        <span class="cmd">npm start</span><br>
+        <span class="comment"># або</span><br>
+        <span class="cmd">node</span> index.cjs
+      </div>
+
+      <p>У консолі має з'явитися:</p>
+
+      <div class="code-block">
+        <span class="val">Control panel started at http://localhost:3001</span><br>
+        <span class="cmd">WA Bridge 1.5</span><br>
+        <span class="comment">Signal poll start ...</span>
+      </div>
+
+      <p>Відкрийте браузер: <strong><code>http://localhost:3001</code></strong></p>
+
+      <div class="notice ok">
+        <span class="icon">✅</span>
+        <span>Якщо бачите панель керування — сервіс запущено успішно. Далі підключайте WhatsApp і Signal.</span>
+      </div>
+
+      <p style="margin-top:16px;"><strong>Автозапуск при старті Windows</strong> — найпростіший спосіб через bat-файл у папці автозапуску:</p>
+
+      <div class="code-label">start-bridge.bat (покласти у проєкт)</div>
+      <div class="code-block">
+        <span class="cmd">@echo off</span><br>
+        <span class="cmd">cd</span> /d <span class="val">D:\Armor\whatsapp-bot</span><br>
+        <span class="cmd">docker compose</span> -f docker-compose.signal.yml up -d<br>
+        <span class="cmd">node</span> index.cjs
+      </div>
+    </div>
+
+    <!-- ═══ 7. WhatsApp ══════════════════════════════════════ -->
+    <div class="section-block" id="whatsapp">
+      <h2 class="section-title"><span class="num">7</span>Підключення WhatsApp</h2>
+
+      <p>При першому запуску (або після очищення сесії) WhatsApp потребує сканування QR-коду.</p>
+
+      <ul class="step-list">
+        <li>
+          <span class="bullet">1</span>
+          <span>Відкрийте панель → вкладка <strong>Інтеграція</strong>. Карта WhatsApp покаже статус <span class="pill pill-yellow">connecting</span>.</span>
+        </li>
+        <li>
+          <span class="bullet">2</span>
+          <span>Натисніть кнопку <strong>«Запустити»</strong> (або вона запустилась автоматично). Зачекайте 10–30 секунд поки з'явиться QR-код.</span>
+        </li>
+        <li>
+          <span class="bullet">3</span>
+          <span>На телефоні відкрийте WhatsApp → <strong>Налаштування → Пов'язані пристрої → Додати пристрій</strong>.</span>
+        </li>
+        <li>
+          <span class="bullet">4</span>
+          <span>Відскануйте QR-код з екрана. Статус зміниться на <span class="pill pill-green">connected</span>.</span>
+        </li>
+      </ul>
+
+      <div class="notice info">
+        <span class="icon">💡</span>
+        <span>Сесія зберігається у папці <code>.wwebjs_auth/</code>. Після першого підключення повторне сканування не потрібне — сервіс підключається автоматично.</span>
+      </div>
+
+      <div class="notice warn">
+        <span class="icon">⚠️</span>
+        <span>Не видаляйте папку <code>.wwebjs_auth/</code> — це призведе до необхідності повторного сканування QR. <strong>Не копіюйте</strong> цю папку між комп'ютерами — сесія прив'язана до машини.</span>
+      </div>
+    </div>
+
+    <!-- ═══ 8. Signal ════════════════════════════════════════ -->
+    <div class="section-block" id="signal">
+      <h2 class="section-title"><span class="num">8</span>Підключення Signal</h2>
+
+      <p>Signal підключається як <strong>пов'язаний пристрій</strong> (linked device) до існуючого облікового запису Signal. Основний телефон залишається активним.</p>
+
+      <ul class="step-list">
+        <li>
+          <span class="bullet">1</span>
+          <span>Переконайтесь, що Docker-контейнери <strong>signal-cli-api</strong> і <strong>signal-bridge</strong> запущені (крок 5).</span>
+        </li>
+        <li>
+          <span class="bullet">2</span>
+          <span>Відкрийте панель → вкладка <strong>Інтеграція</strong>. Карта Signal покаже <span class="pill pill-yellow">connecting</span>.</span>
+        </li>
+        <li>
+          <span class="bullet">3</span>
+          <span>Натисніть кнопку <strong>🔗 Прив'язати Signal</strong>. Введіть назву пристрою (наприклад <code>wa-bridge</code>) та натисніть <strong>Отримати QR</strong>.</span>
+        </li>
+        <li>
+          <span class="bullet">4</span>
+          <span>На телефоні відкрийте Signal → <strong>Налаштування → Пов'язані пристрої → +</strong>. Відскануйте QR-код.</span>
+        </li>
+        <li>
+          <span class="bullet">5</span>
+          <span>Зачекайте 5–15 секунд. Статус Signal зміниться на <span class="pill pill-green">connected</span>.</span>
+        </li>
+      </ul>
+
+      <div class="notice ok">
+        <span class="icon">✅</span>
+        <span>Дані Signal зберігаються у Docker volume <code>signal_cli_data</code> і <strong>не губляться</strong> при перезапуску Docker або ПК. Прив'язка одноразова.</span>
+      </div>
+
+      <div class="notice danger">
+        <span class="icon">🔴</span>
+        <span>Якщо видалити Docker volume <code>signal_cli_data</code> — прив'язку доведеться робити знову. Перед видаленням переконайтесь, що це свідоме рішення.</span>
+      </div>
+    </div>
+
+    <!-- ═══ Порти ════════════════════════════════════════════ -->
+    <div class="section-block" id="ports">
+      <h2 class="section-title"><span class="num">i</span>Використовувані порти</h2>
+
+      <div class="card">
+        <div class="port-row">
+          <span class="port-num">3001</span>
+          <span class="port-name">Панель керування (Node.js)</span>
+          <span class="port-desc">http://localhost:3001</span>
+        </div>
+        <div class="port-row">
+          <span class="port-num">3002</span>
+          <span class="port-name">Signal Bridge (Docker)</span>
+          <span class="port-desc">HTTP API між Node.js і signal-cli</span>
+        </div>
+        <div class="port-row">
+          <span class="port-num">8080</span>
+          <span class="port-name">signal-cli-rest-api (Docker)</span>
+          <span class="port-desc">Внутрішній — напряму не використовується</span>
+        </div>
+        <div class="port-row">
+          <span class="port-num">8000</span>
+          <span class="port-name">FastAPI бекенд (опціонально)</span>
+          <span class="port-desc">Зовнішній сервіс, якщо є автоматизації → FastAPI</span>
+        </div>
+      </div>
+
+      <div class="notice warn">
+        <span class="icon">⚠️</span>
+        <span>Якщо порт 3001 або 3002 зайнятий іншим процесом — змініть <code>PORT=3001</code> у <code>.env</code> та <code>ports: "3002:3002"</code> у <code>docker-compose.signal.yml</code>.</span>
+      </div>
+    </div>
+
+    <!-- ═══ Troubleshoot ═════════════════════════════════════ -->
+    <div class="section-block" id="troubleshoot">
+      <h2 class="section-title"><span class="num">!</span>Часті проблеми</h2>
+
+      <div class="card">
+        <div class="card-title">🐳 Signal: «connecting» — Docker не запущений</div>
+        <p>Відкрийте Docker Desktop, зачекайте статус «Running». Потім перезапустіть контейнери:<br>
+        <code>docker compose -f docker-compose.signal.yml up -d</code></p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📱 WhatsApp не підключається / QR не з'являється</div>
+        <ul class="check-list">
+          <li>Chrome встановлений і доступний за стандартним шляхом</li>
+          <li>Антивірус не блокує Puppeteer / Chrome</li>
+          <li>Спробуйте <code>HEADLESS=0</code> у <code>.env</code> — побачите вікно Chrome</li>
+          <li>Перевірте логи у панелі → вкладка <strong>Логи</strong></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔌 Порт зайнятий (EADDRINUSE)</div>
+        <p>Знайдіть і закрийте процес що займає порт, або змініть <code>PORT</code> у <code>.env</code>.</p>
+        <div class="code-block">
+          <span class="comment"># Знайти процес на порту 3001</span><br>
+          <span class="cmd">netstat</span> -ano | findstr :3001<br>
+          <span class="cmd">taskkill</span> /PID &lt;номер&gt; /F
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📦 npm install: помилка ERESOLVE / peer deps</div>
+        <p>Спробуйте з прапорцем:</p>
+        <div class="code-block">
+          <span class="cmd">npm install</span> --legacy-peer-deps
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Де переглядати логи</div>
+        <ul class="check-list">
+          <li><strong>Панель керування</strong> → вкладка «Логи» — всі події в реальному часі</li>
+          <li><strong>Термінал</strong> — повний stdout Node.js процесу</li>
+          <li><strong>Docker Desktop</strong> → контейнер <code>signal-bridge</code> → Logs</li>
+          <li>Файл <code>logs/signal_raw.ndjson</code> — сирі Signal-повідомлення</li>
+        </ul>
+      </div>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

@@ -4,21 +4,27 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WA Bridge — панель керування</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0a0e14;
-      --panel: #111827;
-      --panel2: #0f172a;
-      --border: #334155;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #2dd4bf;
-      --accent-dim: rgba(45, 212, 191, 0.15);
-      --danger: #f87171;
-      --sidebar-w: 248px;
-      --aside-w: 300px;
-      --radius: 14px;
-      --font: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      --bg: #1C1917;
+      --panel: #28211E;
+      --panel2: #211A17;
+      --border: rgba(255,255,255,0.07);
+      --border-strong: rgba(255,255,255,0.12);
+      --text: #F5F0ED;
+      --muted: #A8998F;
+      --accent: #CC785C;
+      --accent-hover: #D4896C;
+      --accent-dim: rgba(204,120,92,0.14);
+      --danger: #F87171;
+      --sidebar-w: 232px;
+      --aside-w: 296px;
+      --radius: 18px;
+      --radius-sm: 12px;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
     }
     * { box-sizing: border-box; }
     body {
@@ -27,11 +33,14 @@
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
     .app {
       display: flex;
       min-height: 100vh;
     }
+
+    /* ─── Sidebar ──────────────────────────────────────────── */
     .sidebar {
       width: var(--sidebar-w);
       flex-shrink: 0;
@@ -39,67 +48,75 @@
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      padding: 20px 14px;
+      padding: 22px 12px;
     }
     .logo {
       font-weight: 800;
-      font-size: 1.15rem;
-      letter-spacing: -0.02em;
-      margin-bottom: 28px;
-      padding: 0 8px;
+      font-size: 1.1rem;
+      letter-spacing: -0.025em;
+      margin-bottom: 24px;
+      padding: 0 10px;
+      color: var(--text);
     }
-    .logo span { color: var(--accent); }
+    .logo .logo-w { color: #52B788; }
+    .logo .logo-s { color: #6AA8C9; }
+    .logo .logo-bridge { color: var(--muted); font-weight: 500; }
     .nav-btn {
       display: flex;
       align-items: center;
       gap: 10px;
       width: 100%;
-      padding: 12px 14px;
-      margin-bottom: 6px;
+      padding: 11px 14px;
+      margin-bottom: 4px;
       border: none;
-      border-radius: 10px;
+      border-radius: 999px;
       background: transparent;
-      color: var(--text);
+      color: var(--muted);
       font-size: 14px;
-      font-weight: 600;
+      font-weight: 500;
       cursor: pointer;
       text-align: left;
-      transition: background 0.15s;
+      transition: background 0.15s, color 0.15s;
+      font-family: var(--font);
     }
-    .nav-btn:hover { background: rgba(255,255,255,0.06); }
+    .nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
     .nav-btn.active {
       background: var(--accent-dim);
       color: var(--accent);
+      font-weight: 600;
     }
     .badge {
       margin-left: auto;
       background: var(--accent);
-      color: #0f172a;
+      color: #fff;
       font-size: 11px;
-      font-weight: 800;
+      font-weight: 700;
       padding: 2px 7px;
       border-radius: 999px;
     }
     .sidebar-foot {
       margin-top: auto;
-      padding: 12px 8px;
+      padding: 12px 10px;
       font-size: 12px;
       color: var(--muted);
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 6px;
+      gap: 4px;
     }
     .sidebar-version {
       font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
+      font-weight: 600;
+      letter-spacing: 0.02em;
       color: var(--accent);
+      opacity: 0.85;
     }
+
+    /* ─── Main ─────────────────────────────────────────────── */
     .main {
       flex: 1;
       min-width: 0;
-      padding: 24px 28px 40px;
+      padding: 28px 32px 48px;
       overflow-x: hidden;
     }
     .aside {
@@ -107,99 +124,114 @@
       flex-shrink: 0;
       border-left: 1px solid var(--border);
       background: var(--panel2);
-      padding: 24px 20px;
+      padding: 28px 22px;
       font-size: 13px;
-      line-height: 1.55;
+      line-height: 1.6;
       color: var(--muted);
     }
     .aside h3 {
       color: var(--text);
-      font-size: 15px;
-      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 14px;
     }
     .aside ul { margin: 0; padding-left: 18px; }
     .aside li { margin-bottom: 8px; }
     h1.page-title {
-      font-size: 1.35rem;
+      font-size: 1.3rem;
       font-weight: 700;
-      margin: 0 0 20px;
+      letter-spacing: -0.02em;
+      margin: 0 0 22px;
+      color: var(--text);
     }
     .view { display: none; }
     .view.active { display: block; }
     .toolbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       margin-bottom: 20px;
     }
+
+    /* ─── Sub-tabs ─────────────────────────────────────────── */
     .subtabs {
       display: flex;
-      gap: 6px;
+      gap: 4px;
       margin-bottom: 0;
       border-bottom: 1px solid var(--border);
-      padding: 0 8px;
+      padding: 0 4px;
     }
     .subtab-btn {
-      border: 1px solid transparent;
-      border-bottom: none;
+      border: none;
       background: transparent;
-      color: var(--text);
-      border-radius: 14px 14px 0 0;
-      padding: 12px 18px;
-      font-size: 14px;
-      font-weight: 700;
+      color: var(--muted);
+      border-radius: 10px 10px 0 0;
+      padding: 11px 18px;
+      font-size: 13px;
+      font-weight: 500;
       cursor: pointer;
       margin-bottom: -1px;
-      opacity: 0.78;
+      font-family: var(--font);
+      transition: color 0.15s, background 0.15s;
     }
-    .subtab-btn:hover { opacity: 1; background: rgba(255,255,255,0.04); }
+    .subtab-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
     .subtab-btn.active {
-      background: var(--panel);
       color: var(--text);
-      border-color: var(--border);
-      box-shadow: inset 0 3px 0 0 var(--accent);
-      opacity: 1;
+      font-weight: 600;
+      border-bottom: 2px solid var(--accent);
     }
-    .subview { display: none; padding-top: 16px; }
+    .subview { display: none; padding-top: 18px; }
     .subview.active { display: block; }
+
+    /* ─── Buttons ──────────────────────────────────────────── */
     button, .btn {
       border: none;
-      border-radius: 10px;
-      padding: 11px 16px;
+      border-radius: 999px;
+      padding: 10px 18px;
       cursor: pointer;
-      font-weight: 700;
+      font-weight: 600;
       font-size: 13px;
-      font-family: inherit;
+      font-family: var(--font);
+      transition: background 0.15s, filter 0.15s, opacity 0.15s;
     }
     .btn-accent {
       background: var(--accent);
-      color: #0f172a;
+      color: #fff;
     }
-    .btn-accent:hover { filter: brightness(1.05); }
+    .btn-accent:hover { background: var(--accent-hover); }
     .btn-outline {
       background: transparent;
       color: var(--accent);
-      border: 2px solid var(--accent);
+      border: 1.5px solid var(--accent);
     }
-    .btn-ghost { background: #334155; color: var(--text); }
-    .btn-danger { background: #b91c1c; color: white; }
-    .btn-sm { padding: 8px 12px; font-size: 12px; }
+    .btn-outline:hover { background: var(--accent-dim); }
+    .btn-ghost {
+      background: rgba(255,255,255,0.07);
+      color: var(--text);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.11); }
+    .btn-danger { background: rgba(185,28,28,0.8); color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 7px 14px; font-size: 12px; }
+
+    /* ─── Cards ────────────────────────────────────────────── */
     .card {
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 20px;
+      padding: 22px 24px;
       margin-bottom: 16px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+      box-shadow: 0 2px 16px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.18);
     }
     .card h2 {
       margin: 0 0 6px;
-      font-size: 1.05rem;
+      font-size: 1rem;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 10px;
     }
-    .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .card .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -212,25 +244,28 @@
       margin-top: 10px;
     }
     .kpi {
+      background: rgba(255,255,255,0.04);
       border: 1px solid var(--border);
-      background: var(--panel2);
-      border-radius: 10px;
-      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
       min-height: 54px;
     }
     .kpi .kpi-label {
-      font-size: 11px;
+      font-size: 10px;
+      font-weight: 600;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.06em;
       margin-bottom: 4px;
     }
     .kpi .kpi-value {
       font-size: 17px;
-      font-weight: 800;
+      font-weight: 700;
       color: var(--text);
       line-height: 1.1;
     }
+
+    /* ─── Responsive ───────────────────────────────────────── */
     @media (max-width: 1100px) {
       .aside { display: none; }
     }
@@ -246,6 +281,8 @@
       }
       .sidebar-foot { width: 100%; }
     }
+
+    /* ─── Stats ────────────────────────────────────────────── */
     .stat {
       display: grid;
       grid-template-columns: 160px 1fr;
@@ -254,91 +291,95 @@
       margin-bottom: 6px;
     }
     .stat .label { color: var(--muted); }
-    #statusBadge {
+    #statusBadge, #signalStatusBadge {
       display: inline-block;
-      padding: 6px 12px;
+      padding: 5px 12px;
       border-radius: 999px;
-      background: #334155;
-      font-weight: 700;
-      font-size: 13px;
+      background: rgba(255,255,255,0.08);
+      font-weight: 600;
+      font-size: 12px;
     }
-    #signalStatusBadge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: #334155;
-      font-weight: 700;
-      font-size: 13px;
-    }
+
+    /* ─── QR ───────────────────────────────────────────────── */
     #qr {
       max-width: 260px;
       width: 100%;
-      border-radius: 12px;
+      border-radius: 14px;
       background: white;
       display: none;
-      margin-top: 8px;
+      margin-top: 10px;
     }
-    .flow-list { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ─── Flow list ────────────────────────────────────────── */
+    .flow-list { display: flex; flex-direction: column; gap: 10px; }
     .flow-card {
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px 18px;
-      background: var(--panel2);
+      padding: 16px 20px;
+      background: var(--panel);
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
+      transition: border-color 0.15s;
     }
-    .flow-card h3 { margin: 0 0 6px; font-size: 1rem; }
-    .flow-meta { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .flow-card:hover { border-color: var(--border-strong); }
+    .flow-card h3 { margin: 0 0 5px; font-size: 0.95rem; font-weight: 600; }
+    .flow-meta { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .dir-pill {
       display: inline-block;
-      font-size: 11px;
-      font-weight: 800;
+      font-size: 10px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 4px 8px;
-      border-radius: 6px;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      border-radius: 999px;
       background: var(--accent-dim);
       color: var(--accent);
-      margin-bottom: 8px;
+      margin-bottom: 7px;
     }
     .flow-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start; }
-    .flow-card.paused { opacity: 0.88; }
+    .flow-card.paused { opacity: 0.75; }
     .paused-badge {
       display: inline-block;
       font-size: 10px;
-      font-weight: 800;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 3px 8px;
-      border-radius: 6px;
-      background: rgba(251, 191, 36, 0.12);
-      color: #fbbf24;
+      letter-spacing: 0.05em;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: rgba(251,191,36,0.12);
+      color: #FBBF24;
       margin-left: 8px;
       vertical-align: middle;
     }
+
+    /* ─── Icon buttons ─────────────────────────────────────── */
     .icon-btn {
-      width: 36px;
-      height: 36px;
+      width: 34px;
+      height: 34px;
       padding: 0;
-      border-radius: 10px;
+      border-radius: 999px;
       border: 1px solid var(--border);
-      background: #334155;
-      color: var(--text);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
     }
-    .icon-btn:hover { filter: brightness(1.12); }
+    .icon-btn:hover { background: rgba(255,255,255,0.11); color: var(--text); }
     .icon-btn.danger {
-      background: #7f1d1d;
-      border-color: #991b1b;
-      color: #fecaca;
+      background: rgba(127,29,29,0.35);
+      border-color: rgba(153,27,27,0.4);
+      color: #FCA5A5;
     }
-    .icon-btn svg { width: 18px; height: 18px; display: block; }
+    .icon-btn.danger:hover { background: rgba(127,29,29,0.55); }
+    .icon-btn svg { width: 16px; height: 16px; display: block; }
+
+    /* ─── Toggle ───────────────────────────────────────────── */
     .toolbar-toggle {
       display: inline-flex;
       align-items: center;
@@ -349,20 +390,27 @@
       user-select: none;
     }
     .toolbar-toggle input { accent-color: var(--accent); }
+
+    /* ─── Hint ─────────────────────────────────────────────── */
     .hint {
       font-size: 13px;
       color: var(--muted);
-      padding: 12px 14px;
-      background: rgba(250, 204, 21, 0.08);
-      border: 1px solid rgba(250, 204, 21, 0.25);
-      border-radius: 10px;
+      padding: 12px 16px;
+      background: rgba(251,191,36,0.06);
+      border: 1px solid rgba(251,191,36,0.18);
+      border-radius: var(--radius-sm);
       margin-bottom: 16px;
+      line-height: 1.5;
     }
+
+    /* ─── Modal ────────────────────────────────────────────── */
     .modal-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.65);
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
       z-index: 100;
       align-items: center;
       justify-content: center;
@@ -374,48 +422,65 @@
       max-height: 90vh;
       overflow: auto;
       background: var(--panel);
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-strong);
       border-radius: var(--radius);
-      padding: 22px 22px 18px;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+      padding: 24px 24px 20px;
+      box-shadow: 0 32px 96px rgba(0,0,0,0.55);
     }
     .modal-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
     }
-    .modal-head h2 { margin: 0; font-size: 1.15rem; }
+    .modal-head h2 { margin: 0; font-size: 1.1rem; font-weight: 700; }
     .modal-close {
-      background: transparent;
+      width: 30px;
+      height: 30px;
+      background: rgba(255,255,255,0.06);
       border: none;
+      border-radius: 999px;
       color: var(--muted);
-      font-size: 22px;
+      font-size: 18px;
       cursor: pointer;
       line-height: 1;
-      padding: 4px 8px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
     }
+    .modal-close:hover { background: rgba(255,255,255,0.11); color: var(--text); }
+
+    /* ─── Form fields ──────────────────────────────────────── */
     .field { margin-bottom: 14px; }
     .field label {
       display: block;
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 600;
       color: var(--muted);
       margin-bottom: 6px;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.06em;
     }
     .field input:not([type="checkbox"]):not([type="radio"]),
     .field select,
     .field textarea {
       width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       background: var(--panel2);
       color: var(--text);
       font-size: 14px;
-      font-family: inherit;
+      font-family: var(--font);
+      transition: border-color 0.15s;
+      outline: none;
+    }
+    .field input:not([type="checkbox"]):not([type="radio"]):focus,
+    .field select:focus,
+    .field textarea:focus {
+      border-color: var(--accent);
     }
     .field input[type="checkbox"],
     .field input[type="radio"] {
@@ -434,12 +499,13 @@
       align-items: center;
       gap: 10px;
       text-transform: none;
-      font-weight: 600;
+      font-weight: 500;
       font-size: 13px;
       letter-spacing: normal;
       margin-bottom: 0;
       cursor: pointer;
-      line-height: 1.35;
+      line-height: 1.4;
+      color: var(--text);
     }
     .field textarea { min-height: 72px; resize: vertical; }
     .field-row {
@@ -448,78 +514,105 @@
       align-items: flex-end;
     }
     .field-row .field { flex: 1; margin-bottom: 0; }
+
+    /* ─── Logs terminal ────────────────────────────────────── */
     #logs {
-      background: #020617;
-      color: #cbd5e1;
-      border-radius: 12px;
-      padding: 12px;
+      background: #110D0B;
+      color: #C4B5A8;
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
       height: 320px;
       overflow: auto;
       white-space: pre-wrap;
-      font-family: ui-monospace, Consolas, monospace;
+      font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
       font-size: 12px;
-      border: 1px solid #1e293b;
+      border: 1px solid var(--border);
     }
-    .empty { color: var(--muted); font-size: 14px; padding: 24px; text-align: center; }
-    select[multiple] {
-      min-height: 160px;
-      padding: 8px;
-    }
-    select[multiple] option { padding: 6px 8px; }
     .signal-console {
-      background: #020617;
-      color: #cbd5e1;
-      border-radius: 12px;
-      padding: 12px;
+      background: #110D0B;
+      color: #C4B5A8;
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
       height: 170px;
       overflow: auto;
       white-space: pre-wrap;
-      font-family: ui-monospace, Consolas, monospace;
+      font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
       font-size: 12px;
-      border: 1px solid #1e293b;
+      border: 1px solid var(--border);
       margin-top: 12px;
     }
+
+    /* ─── Empty / selects ──────────────────────────────────── */
+    .empty { color: var(--muted); font-size: 14px; padding: 32px; text-align: center; }
+    select[multiple] { min-height: 160px; padding: 8px; }
+    select[multiple] option { padding: 6px 8px; }
+
+    /* ─── Signal alert ─────────────────────────────────────── */
     .signal-alert {
       margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(248, 113, 113, 0.45);
-      background: rgba(127, 29, 29, 0.22);
-      color: #fecaca;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(248,113,113,0.3);
+      background: rgba(127,29,29,0.2);
+      color: #FCA5A5;
       font-size: 13px;
-      line-height: 1.45;
+      line-height: 1.5;
       display: none;
     }
-    .conn-status.status-connected { color: #4ade80; }
-    .conn-status.status-not-connected { color: #f87171; }
+
+    /* ─── Connection status ────────────────────────────────── */
+    .conn-status.status-connected { color: #4ADE80; }
+    .conn-status.status-not-connected { color: #F87171; }
+    .conn-status.status-connecting { color: #FB923C; }
     .conn-status.status-checking { color: var(--muted); }
     .conn-spinner {
       display: inline-block;
       width: 13px; height: 13px;
-      border: 2px solid #334155;
-      border-top-color: #38bdf8;
+      border: 2px solid rgba(255,255,255,0.12);
+      border-top-color: #FB923C;
       border-radius: 50%;
-      animation: connSpin 0.7s linear infinite;
+      animation: connSpin 0.75s linear infinite;
       vertical-align: middle;
       flex-shrink: 0;
     }
     .conn-progress {
       margin-top: 12px;
       font-size: 13px;
-      color: var(--muted);
+      color: #FB923C;
       display: flex;
       align-items: center;
       gap: 8px;
     }
+    .conn-error {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #F87171;
+      background: rgba(248,113,113,0.06);
+      border: 1px solid rgba(248,113,113,0.18);
+      border-radius: 10px;
+      padding: 8px 14px;
+      display: none;
+    }
+    .conn-account { margin-top: 8px; }
+    .conn-account .conn-phone { font-weight: 700; color: var(--text); font-size: 15px; }
+    .conn-account .conn-name { font-size: 13px; color: var(--muted); margin-top: 2px; }
     @keyframes connSpin { to { transform: rotate(360deg); } }
+
+    /* ─── Inline notes ─────────────────────────────────────── */
     .inline-note {
       margin-top: 8px;
       font-size: 12px;
       color: var(--muted);
+      line-height: 1.45;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
     }
-    .inline-note.error {
-      color: #fecaca;
-    }
+    .inline-note:empty { display: none; }
+    .inline-note.error { color: #FCA5A5; }
+
+    /* ─── Chips ────────────────────────────────────────────── */
     .chips {
       display: flex;
       flex-wrap: wrap;
@@ -531,30 +624,37 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      border: 1px solid var(--border);
-      background: var(--panel2);
+      background: var(--accent-dim);
+      border: 1px solid rgba(204,120,92,0.25);
       border-radius: 999px;
       padding: 4px 10px;
       font-size: 12px;
-      color: var(--text);
+      color: var(--accent);
+      font-weight: 500;
     }
     .chip button {
       border: none;
       background: transparent;
-      color: var(--muted);
+      color: var(--accent);
+      opacity: 0.65;
       font-size: 14px;
       line-height: 1;
       padding: 0;
       cursor: pointer;
     }
+    .chip button:hover { opacity: 1; }
+
+    /* ─── Chat picker ──────────────────────────────────────── */
     .chat-picker {
       position: relative;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius-sm);
       background: var(--panel2);
-      padding: 8px;
+      padding: 8px 10px;
       min-height: 44px;
+      transition: border-color 0.15s;
     }
+    .chat-picker:focus-within { border-color: var(--accent); }
     .chat-picker input {
       width: 100%;
       border: none;
@@ -563,10 +663,9 @@
       color: var(--text);
       font-size: 14px;
       padding: 4px 2px;
+      font-family: var(--font);
     }
-    .chat-picker .chips {
-      margin: 0 0 4px;
-    }
+    .chat-picker .chips { margin: 0 0 4px; }
     .chat-dropdown {
       display: none;
       position: absolute;
@@ -574,40 +673,89 @@
       right: 0;
       top: calc(100% + 6px);
       z-index: 120;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border-strong);
       background: var(--panel);
-      border-radius: 10px;
+      border-radius: var(--radius-sm);
       max-height: 220px;
       overflow: auto;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.45);
     }
     .chat-dropdown.open { display: block; }
     .chat-option {
-      padding: 8px 10px;
-      border-bottom: 1px solid rgba(148,163,184,0.16);
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
       cursor: pointer;
       font-size: 13px;
       color: var(--text);
+      transition: background 0.12s;
     }
     .chat-option:last-child { border-bottom: none; }
-    .chat-option:hover { background: rgba(45,212,191,0.12); }
-    .chat-option.selected { background: rgba(45,212,191,0.2); color: var(--accent); }
+    .chat-option:hover { background: var(--accent-dim); }
+    .chat-option.selected { background: var(--accent-dim); color: var(--accent); }
+
+    /* ─── Modal sections ───────────────────────────────────── */
     .modal-section {
       margin-bottom: 18px;
-      padding-bottom: 14px;
+      padding-bottom: 16px;
       border-bottom: 1px solid var(--border);
     }
     .modal-section:last-of-type { border-bottom: none; }
     .modal-section h3 {
-      margin: 0 0 10px;
-      font-size: 13px;
+      margin: 0 0 12px;
+      font-size: 11px;
       font-weight: 700;
       color: var(--accent);
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.08em;
     }
+
+    /* ─── Modal tabs ───────────────────────────────────────── */
+    .modal-tabs {
+      display: flex;
+      gap: 3px;
+      margin-bottom: 22px;
+      background: var(--panel2);
+      border-radius: 999px;
+      padding: 3px;
+    }
+    .modal-tab {
+      flex: 1;
+      border: none;
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      font-family: var(--font);
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .modal-tab:hover { color: var(--text); }
+    .modal-tab.active {
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+    }
+    .modal-tab-body {
+      display: grid;
+      grid-template-rows: 1fr;
+    }
+    .modal-tab-panel {
+      grid-area: 1 / 1;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .modal-tab-panel.active {
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    /* ─── Disabled ─────────────────────────────────────────── */
     input:disabled, select:disabled, textarea:disabled {
-      opacity: 0.45;
+      opacity: 0.38;
       cursor: not-allowed;
     }
     .modal .sub.field-hint { margin-top: 6px; font-size: 12px; }
@@ -616,7 +764,7 @@
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="logo">WA <span>Bridge</span></div>
+      <div class="logo"><span class="logo-w">W</span><span class="logo-s">S</span> <span class="logo-bridge">Bridge</span></div>
       <button type="button" class="nav-btn active" data-nav="integration">
         Інтеграція
       </button>
@@ -629,6 +777,7 @@
       <div class="sidebar-foot">
         <span id="appVersion" class="sidebar-version" title="Версія з файлу VERSION">—</span>
         <span>Локальна панель · порт змінних середовища</span>
+        <a href="/faq.html" target="_blank" style="color:var(--muted);font-size:11px;text-decoration:none;opacity:0.8;margin-top:2px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">FAQ / Довідка</a>
       </div>
     </aside>
 
@@ -639,8 +788,8 @@
           <div class="card">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
               <div>
-                <h2 style="margin:0 0 6px;">WhatsApp <span id="waConnStatus" class="conn-status status-checking">—</span></h2>
-                <p class="sub" id="waConnMeta" style="margin:0;">—</p>
+                <h2 style="margin:0 0 4px;">WhatsApp <span id="waConnStatus" class="conn-status status-checking">—</span></h2>
+                <div id="waConnMeta"></div>
               </div>
               <div class="flow-actions" style="margin-top:0;">
                 <button type="button" class="icon-btn" title="Вийти з акаунта WhatsApp" onclick="callApi('/api/logout')">
@@ -652,8 +801,9 @@
               </div>
             </div>
             <div id="waConnProgress" class="conn-progress">
-              <span class="conn-spinner"></span><span>Перевірка підключення…</span>
+              <span class="conn-spinner"></span><span id="waConnProgressText">Перевірка підключення…</span>
             </div>
+            <div id="waConnError" class="conn-error"></div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waConnectToolbar">
               <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="waConnect()">Зʼєднатися</button>
             </div>
@@ -661,8 +811,8 @@
           <div class="card">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
               <div>
-                <h2 style="margin:0 0 6px;">Signal <span id="signalConnStatus" class="conn-status status-checking">—</span></h2>
-                <p class="sub" id="signalConnMeta" style="margin:0;">—</p>
+                <h2 style="margin:0 0 4px;">Signal <span id="signalConnStatus" class="conn-status status-checking">—</span></h2>
+                <div id="signalConnMeta"></div>
               </div>
               <div class="flow-actions" style="margin-top:0;">
                 <button type="button" class="icon-btn" title="Оновити QR / Перелінкувати" onclick="signalLoginQr()">
@@ -674,8 +824,9 @@
               </div>
             </div>
             <div id="signalConnProgress" class="conn-progress">
-              <span class="conn-spinner"></span><span>Перевірка підключення…</span>
+              <span class="conn-spinner"></span><span id="signalConnProgressText">Перевірка підключення…</span>
             </div>
+            <div id="signalConnError" class="conn-error"></div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="signalConnectToolbar">
               <button type="button" class="btn btn-accent" id="signalConnectBtn" onclick="signalLoginQr()">Зʼєднатися</button>
             </div>
@@ -745,7 +896,16 @@
       </div>
       <form id="flowForm" onsubmit="submitFlow(event)">
         <input type="hidden" id="flowId" value="" />
-        <div class="modal-section">
+
+        <div class="modal-tabs">
+          <button type="button" class="modal-tab active" data-modal-tab="main"     onclick="switchModalTab('main')">Основні</button>
+          <button type="button" class="modal-tab"        data-modal-tab="filter"   onclick="switchModalTab('filter')">Фільтр</button>
+          <button type="button" class="modal-tab"        data-modal-tab="advanced" onclick="switchModalTab('advanced')">Додатково</button>
+        </div>
+
+        <div class="modal-tab-body">
+        <!-- ── Вкладка: Основні ── -->
+        <div class="modal-tab-panel active" id="mtab-main">
           <div class="field">
             <label for="flowName">Назва автоматизації</label>
             <input id="flowName" required maxlength="120" placeholder="Напр. Вхідний потік з групи А" />
@@ -768,8 +928,7 @@
                 </select>
               </div>
             </div>
-            <p class="sub field-hint" id="flowHintWa" style="display: none">
-            </p>
+            <p class="sub field-hint" id="flowHintWa" style="display: none"></p>
           </div>
           <div class="field" id="flowSourcesWaWrap">
             <label for="flowSources">Звідки надсилати (оберіть кілька)</label>
@@ -801,12 +960,14 @@
             <div id="flowTargetStatus" class="inline-note"></div>
           </div>
         </div>
-        <div class="modal-section">
+
+        <!-- ── Вкладка: Фільтр ── -->
+        <div class="modal-tab-panel" id="mtab-filter">
           <div class="field">
             <label for="flowKeywords">Ключові слова (текст повідомлення)</label>
             <textarea
               id="flowKeywords"
-              rows="3"
+              rows="4"
               placeholder="Кілька значень через кому або з нового рядка"
             ></textarea>
           </div>
@@ -814,12 +975,14 @@
             <label for="flowFrequencies">Частоти</label>
             <textarea
               id="flowFrequencies"
-              rows="3"
+              rows="4"
               placeholder="Напр. 144.500 або позначення діапазону"
             ></textarea>
           </div>
         </div>
-        <div class="modal-section">
+
+        <!-- ── Вкладка: Додатково ── -->
+        <div class="modal-tab-panel" id="mtab-advanced">
           <div class="field">
             <label><input type="checkbox" disabled /> Додавати скріншот з координатами</label>
           </div>
@@ -827,7 +990,9 @@
             <label><input type="checkbox" id="flowSendAttachments" /> Пересилати зображення з повідомлення</label>
           </div>
         </div>
-        <div class="toolbar" style="margin-top:18px;">
+        </div><!-- /.modal-tab-body -->
+
+        <div class="toolbar" style="margin-top:20px;">
           <button type="submit" class="btn btn-accent">Зберегти</button>
           <button type="button" class="btn btn-ghost" onclick="closeFlowModal()">Скасувати</button>
         </div>
@@ -936,20 +1101,23 @@
       if (!el) return;
       const msg = String(text || '').trim();
       if (!msg) {
-        el.textContent = '';
+        el.innerHTML = '';
         el.classList.remove('error');
         return;
       }
-      el.textContent = msg;
-      if (kind === 'error') el.classList.add('error');
-      else el.classList.remove('error');
+      if (kind === 'loading') {
+        el.innerHTML = '<span class="conn-spinner"></span> ' + msg;
+        el.classList.remove('error');
+      } else {
+        el.textContent = msg;
+        if (kind === 'error') el.classList.add('error');
+        else el.classList.remove('error');
+      }
     }
 
     function platformLoadingMessage(platform) {
-      if (platform === 'signal') {
-        return 'Завантаження каталогу чатів Signal… Якщо далі потрібен live-список (ціль Signal), це може зайняти до 1–2 хв.';
-      }
-      if (platform === 'whatsapp') return 'Завантаження чатів WhatsApp...';
+      if (platform === 'signal') return 'Завантаження чатів Signal (1–2 хв)';
+      if (platform === 'whatsapp') return 'Завантаження чатів WhatsApp';
       return '';
     }
 
@@ -1002,47 +1170,137 @@
     let signalStatusKnown = false;
     let waConnectUiInProgress = false;
     let signalLinkUiInProgress = false;
+    let signalAutoCheckUiInProgress = false; // окремий прапорець для авто-перевірки (не QR-лінкування)
 
     function renderState(s) {
-      // Simplified Integration UI
+      // WhatsApp card
       const waConnected = Boolean(s?.authenticated) && Boolean(s?.ready);
+      const waStatus = String(s?.status || 'idle');
+      // Server is actively connecting (auto-restore or manual start)
+      const waAutoConnecting = !waConnected && (waStatus === 'starting' || waStatus === 'authenticated');
       const waConnStatus = document.getElementById('waConnStatus');
       const waConnMeta = document.getElementById('waConnMeta');
       const waConnectToolbar = document.getElementById('waConnectToolbar');
       const waConnProgress = document.getElementById('waConnProgress');
-      if (waConnStatus) {
-        waConnStatus.textContent = waConnected ? 'connected' : 'not connected';
-        waConnStatus.className = 'conn-status ' + (waConnected ? 'status-connected' : 'status-not-connected');
+      const waConnProgressText = document.getElementById('waConnProgressText');
+      const waConnError = document.getElementById('waConnError');
+      // Якщо з'єднання завершилось успішно — скидаємо прапорець
+      if (waConnectUiInProgress && waConnected) {
+        waConnectUiInProgress = false;
       }
-      if (waConnMeta) {
-        const wid = String(s?.clientInfo?.wid || '').trim();
-        const phone = wid && wid.includes('@') ? wid.split('@')[0] : wid;
-        waConnMeta.textContent = waConnected && phone ? `Акаунт: +${String(phone).replace(/\D/g, '')}` : '—';
+      // Якщо сервер підключається автоматично — показуємо connecting UI
+      if (!waConnectUiInProgress && waAutoConnecting) {
+        waConnectUiInProgress = true;
+      }
+      // Якщо підключення завершилось невдало (сервер більше не connecting) — скидаємо прапорець
+      if (waConnectUiInProgress && !waConnected && !waAutoConnecting) {
+        waConnectUiInProgress = false;
       }
       if (!waConnectUiInProgress) {
-        if (waConnProgress) waConnProgress.style.display = 'none';
-        if (waConnectToolbar) waConnectToolbar.style.display = waConnected ? 'none' : 'flex';
+        if (waConnected) {
+          if (waConnStatus) {
+            waConnStatus.textContent = 'connected';
+            waConnStatus.className = 'conn-status status-connected';
+          }
+          if (waConnMeta) {
+            const wid = String(s?.clientInfo?.wid || '').trim();
+            const phone = wid && wid.includes('@') ? wid.split('@')[0] : wid;
+            const phoneStr = phone ? `+${String(phone).replace(/\D/g, '')}` : '';
+            const pushname = String(s?.clientInfo?.pushname || '').trim();
+            waConnMeta.innerHTML = phoneStr
+              ? `<div class="conn-account"><div class="conn-phone">${escapeHtml(phoneStr)}</div>${pushname ? `<div class="conn-name">${escapeHtml(pushname)}</div>` : ''}</div>`
+              : '';
+          }
+          if (waConnProgress) waConnProgress.style.display = 'none';
+          if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+          if (waConnError) waConnError.style.display = 'none';
+        } else {
+          if (waConnStatus) {
+            waConnStatus.textContent = 'not connected';
+            waConnStatus.className = 'conn-status status-not-connected';
+          }
+          if (waConnMeta) waConnMeta.innerHTML = '';
+          if (waConnProgress) waConnProgress.style.display = 'none';
+          if (waConnectToolbar) waConnectToolbar.style.display = 'flex';
+        }
+      } else {
+        // UI is in "connecting" mode — keep spinner visible, update text if server status changed
+        if (waConnStatus) {
+          waConnStatus.textContent = 'connecting';
+          waConnStatus.className = 'conn-status status-connecting';
+        }
+        if (waConnProgress) waConnProgress.style.display = 'flex';
+        if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+        if (waConnProgressText && waAutoConnecting) {
+          waConnProgressText.textContent = waStatus === 'authenticated' ? 'Аутентифікація…' : 'Підключення…';
+        }
       }
       waStatusKnown = true;
 
       const sig = s.signal || {};
       lastStateSnapshot = s;
       const signalConnected = sig.linked === true;
+      // Auto-checking: bridge running + not yet got linked response,
+      // OR whole system is still starting up (WA init takes 5-8s before startSignalWorker fires)
+      const signalAutoChecking =
+        (sig.running === true && sig.linked === null) ||
+        (!signalConnected && waStatus === 'starting');
       const signalConnStatus = document.getElementById('signalConnStatus');
       const signalConnMeta = document.getElementById('signalConnMeta');
       const signalConnectToolbar = document.getElementById('signalConnectToolbar');
       const signalConnProgress = document.getElementById('signalConnProgress');
-      if (signalConnStatus) {
-        signalConnStatus.textContent = signalConnected ? 'connected' : 'not connected';
-        signalConnStatus.className = 'conn-status ' + (signalConnected ? 'status-connected' : 'status-not-connected');
+      const signalConnProgressText = document.getElementById('signalConnProgressText');
+      const signalConnError = document.getElementById('signalConnError');
+      // --- Авто-перевірка (bridge стартував, ще не отримав відповіді) ---
+      if (signalAutoChecking) {
+        // Первинна перевірка ще не завершена — тримаємо авто-прапорець
+        signalAutoCheckUiInProgress = true;
+      } else {
+        // Первинна перевірка завершена (linked стало true або false)
+        signalAutoCheckUiInProgress = false;
       }
-      if (signalConnMeta) {
-        const acc = Array.isArray(sig.linkedAccounts) && sig.linkedAccounts.length ? String(sig.linkedAccounts[0]) : '';
-        signalConnMeta.textContent = signalConnected && acc ? `Акаунт: ${acc}` : '—';
+      // --- Ручне QR-лінкування ---
+      // Якщо Signal підключився — скидаємо прапорець ручного лінкування
+      if (signalLinkUiInProgress && signalConnected) {
+        signalLinkUiInProgress = false;
       }
-      if (!signalLinkUiInProgress) {
-        if (signalConnProgress) signalConnProgress.style.display = 'none';
-        if (signalConnectToolbar) signalConnectToolbar.style.display = signalConnected ? 'none' : 'flex';
+      // Сумарний стан "connecting" = авто-перевірка або ручне лінкування
+      const signalShowConnecting = signalAutoCheckUiInProgress || signalLinkUiInProgress;
+      if (!signalShowConnecting) {
+        if (signalConnected) {
+          if (signalConnStatus) {
+            signalConnStatus.textContent = 'connected';
+            signalConnStatus.className = 'conn-status status-connected';
+          }
+          if (signalConnMeta) {
+            const acc = Array.isArray(sig.linkedAccounts) && sig.linkedAccounts.length ? String(sig.linkedAccounts[0]) : '';
+            signalConnMeta.innerHTML = acc
+              ? `<div class="conn-account"><div class="conn-phone">${escapeHtml(acc)}</div></div>`
+              : '';
+          }
+          if (signalConnProgress) signalConnProgress.style.display = 'none';
+          if (signalConnectToolbar) signalConnectToolbar.style.display = 'none';
+          if (signalConnError) signalConnError.style.display = 'none';
+        } else {
+          if (signalConnStatus) {
+            signalConnStatus.textContent = 'not connected';
+            signalConnStatus.className = 'conn-status status-not-connected';
+          }
+          if (signalConnMeta) signalConnMeta.innerHTML = '';
+          if (signalConnProgress) signalConnProgress.style.display = 'none';
+          if (signalConnectToolbar) signalConnectToolbar.style.display = 'flex';
+        }
+      } else {
+        // UI is in "connecting" mode for Signal (initial check or manual QR link in progress)
+        if (signalConnStatus) {
+          signalConnStatus.textContent = 'connecting';
+          signalConnStatus.className = 'conn-status status-connecting';
+        }
+        if (signalConnProgress) signalConnProgress.style.display = 'flex';
+        if (signalConnectToolbar) signalConnectToolbar.style.display = 'none';
+        if (signalConnProgressText && signalAutoChecking) {
+          signalConnProgressText.textContent = 'Перевірка підключення…';
+        }
       }
       signalStatusKnown = true;
 
@@ -1099,7 +1357,9 @@
         return `Ціль: ${escapeHtml(tid)}${extra}`;
       }
       if ((f.targetPlatform || '') === 'signal') {
-        const tid = f.targetChatId ? chatLabelById(f.targetChatId) : '—';
+        // Пріоритет: збережена ref-назва → chatLabelById (живий кеш / flowChatRefsById)
+        const refName = String(f.targetChatRef?.name || '').trim();
+        const tid = refName || (f.targetChatId ? chatLabelById(f.targetChatId) : '—');
         return `Ціль: ${escapeHtml(tid)} (Signal)`;
       }
       return 'FastAPI: з .env · Відповіді actions → TARGET_CHAT з .env';
@@ -1141,11 +1401,13 @@
     }
 
     function chatLabelById(chatId) {
-      if (flowChatRefsById[chatId]) return flowChatRefsById[chatId];
+      // Живий кеш чатів має пріоритет над збереженими рефами —
+      // інакше перейменовані або змінені чати показують стару назву.
       const c =
         chatsCacheByPlatform.whatsapp.find((x) => x.id === chatId) ||
         chatsCacheByPlatform.signal.find((x) => x.id === chatId);
       if (c && c.name) return c.name;
+      if (flowChatRefsById[chatId]) return flowChatRefsById[chatId];
       const v = String(chatId || '').trim();
       const looksTechnical = v.startsWith('group.') || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v) || v.length > 48;
       return looksTechnical ? 'Невідомий чат' : v;
@@ -1167,14 +1429,20 @@
 
     function filterSummaryLine(f) {
       if (flowSkipsFiltersClient(f)) {
-        return '<span style="color:#86efac">Фільтри: вимкнено (*)</span>';
+        return '<span style="color:#86efac">Фільтр: вимкнено (*)</span>';
       }
       const kt = splitFilterTokensClient(f.keywords || '').filter((t) => t !== '*');
       const ft = splitFilterTokensClient(f.frequencies || '').filter((t) => t !== '*');
       const parts = [];
-      if (kt.length) parts.push('текст: ' + kt.length + ' ток.');
-      if (ft.length) parts.push('частоти: ' + ft.length + ' ток.');
-      return escapeHtml(parts.length ? parts.join(' · ') : '—');
+      if (kt.length) {
+        const preview = kt.slice(0, 3).map(t => escapeHtml(t)).join(', ') + (kt.length > 3 ? ` +${kt.length - 3}` : '');
+        parts.push('слова: ' + preview);
+      }
+      if (ft.length) {
+        const preview = ft.slice(0, 3).map(t => escapeHtml(t)).join(', ') + (ft.length > 3 ? ` +${ft.length - 3}` : '');
+        parts.push('частоти: ' + preview);
+      }
+      return 'Фільтр: ' + (parts.length ? parts.join(' · ') : '—');
     }
 
     function formatSourceLines(ids) {
@@ -1199,8 +1467,19 @@
       }
       el.innerHTML = flows
         .map((f) => {
-          const src = sourceList(f);
-          const srcLine = src.length ? formatSourceLines(src) : '—';
+          // Для Signal-джерела з sourceChatKey — показуємо ім'я з sourceChatRefs безпосередньо,
+          // бо sourceChatIds може містити старий ID, а chatLabelById повертатиме стару назву з кешу bridge.
+          let srcLine;
+          if (f.sourcePlatform === 'signal' && f.sourceChatKey) {
+            const refName = String(f.sourceChatRefs?.[0]?.name || '').trim();
+            const src2 = sourceList(f);
+            srcLine = refName
+              ? escapeHtml(refName)
+              : (src2.length ? formatSourceLines(src2) : '—');
+          } else {
+            const src = sourceList(f);
+            srcLine = src.length ? formatSourceLines(src) : '—';
+          }
           const paused = Boolean(f.paused);
           const pauseIcon = paused ? ICON_PLAY : ICON_PAUSE;
           const pauseTitle = paused ? 'Запустити' : 'Пауза';
@@ -1211,9 +1490,9 @@
             <div class="dir-pill">${directionLabel(f)}</div>
             <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}</h3>
             <div class="flow-meta">
-              Звідки надсилати:<br/>${srcLine}<br/>
-              <span style="margin-top:8px;display:inline-block;">${filterSummaryLine(f)}</span><br/>
-              <span style="margin-top:6px;display:inline-block;">${routeFooterLine(f)}</span>
+              <div><span style="color:var(--muted);font-size:12px;">Джерело:</span> ${srcLine}</div>
+              <div style="margin-top:4px;">${filterSummaryLine(f)}</div>
+              <div style="margin-top:4px;">${routeFooterLine(f)}</div>
             </div>
           </div>
           <div class="flow-actions">
@@ -1250,16 +1529,27 @@
     async function waConnect() {
       const toolbar = document.getElementById('waConnectToolbar');
       const progress = document.getElementById('waConnProgress');
+      const progressText = document.getElementById('waConnProgressText');
       const status = document.getElementById('waConnStatus');
+      const errEl = document.getElementById('waConnError');
       if (toolbar) toolbar.style.display = 'none';
-      if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Підключення…</span>'; progress.style.display = 'flex'; }
-      if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
+      if (errEl) errEl.style.display = 'none';
+      if (progressText) progressText.textContent = 'Підключення…';
+      if (progress) progress.style.display = 'flex';
+      if (status) { status.textContent = 'connecting'; status.className = 'conn-status status-connecting'; }
       waConnectUiInProgress = true;
       try {
-        await callApi('/api/login');
-      } finally {
+        const res = await fetch('/api/login', { method: 'POST', credentials: 'same-origin' });
+        if (res.status === 401) { window.location.href = '/login.html'; return; }
+        const data = await res.json().catch(() => ({}));
+        if (data.ok === false) throw new Error(data.message || 'Сервер повернув помилку');
+        // Успіх — чекаємо підтвердження від SSE (renderState оновить UI)
+        if (progressText) progressText.textContent = 'Очікування підтвердження…';
+      } catch (e) {
         waConnectUiInProgress = false;
         if (progress) progress.style.display = 'none';
+        if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
+        if (errEl) { errEl.textContent = e.message || 'Не вдалося підключитися'; errEl.style.display = 'block'; }
         if (toolbar) toolbar.style.display = 'flex';
       }
     }
@@ -1293,10 +1583,14 @@
       }
       const toolbar = document.getElementById('signalConnectToolbar');
       const progress = document.getElementById('signalConnProgress');
+      const progressText = document.getElementById('signalConnProgressText');
       const status = document.getElementById('signalConnStatus');
+      const errEl = document.getElementById('signalConnError');
       if (toolbar) toolbar.style.display = 'none';
-      if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Генерація QR…</span>'; progress.style.display = 'flex'; }
-      if (status) { status.textContent = 'підключення…'; status.className = 'conn-status status-checking'; }
+      if (errEl) errEl.style.display = 'none';
+      if (progressText) progressText.textContent = 'Генерація QR…';
+      if (progress) progress.style.display = 'flex';
+      if (status) { status.textContent = 'connecting'; status.className = 'conn-status status-connecting'; }
       signalLinkUiInProgress = true;
       const btn = document.getElementById('signalLoginBtn');
       const refreshBtn = document.getElementById('signalRefreshBtn');
@@ -1320,14 +1614,16 @@
         if (data.message) appendSignalConsoleLine('Signal link: message=' + data.message);
         if (!data.ok) {
           signalLinkUiInProgress = false;
-          setSignalLinkAlert(data.message || 'Не вдалося згенерувати QR для Signal');
+          const msg = data.message || 'Не вдалося згенерувати QR для Signal';
+          if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+          setSignalLinkAlert(msg);
           if (progress) progress.style.display = 'none';
           if (toolbar) toolbar.style.display = 'flex';
           if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
           return;
         }
-        // QR generated — keep signalLinkUiInProgress=true until scan completes (startSignalLinkWatch handles it)
-        if (progress) { progress.innerHTML = '<span class="conn-spinner"></span><span>Очікування сканування QR…</span>'; }
+        // QR generated — keep signalLinkUiInProgress=true until scan completes
+        if (progressText) progressText.textContent = 'Очікування сканування QR…';
         const img = document.getElementById('signalQr');
         if (!img) return;
         img.src = data.qrDataUrl;
@@ -1336,8 +1632,10 @@
         startSignalLinkWatch();
       } catch (e) {
         signalLinkUiInProgress = false;
-        appendSignalConsoleLine('Signal link: exception ' + (e?.message || String(e)));
-        setSignalLinkAlert(e?.message || 'Помилка при генерації QR для Signal');
+        const msg = e?.message || 'Помилка при генерації QR для Signal';
+        appendSignalConsoleLine('Signal link: exception ' + msg);
+        if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+        setSignalLinkAlert(msg);
         if (progress) progress.style.display = 'none';
         if (toolbar) toolbar.style.display = 'flex';
         if (status) { status.textContent = 'not connected'; status.className = 'conn-status status-not-connected'; }
@@ -1699,12 +1997,12 @@
       const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
       setFlowStatusFor('source', '', '');
       setFlowStatusFor('target', '', '');
-      setFlowStatusFor('source', 'info', platformLoadingMessage(src));
+      setFlowStatusFor('source', 'loading', platformLoadingMessage(src));
       if (tgt !== 'fastapi') {
-        setFlowStatusFor('target', 'info', platformLoadingMessage(tgt));
+        setFlowStatusFor('target', 'loading', platformLoadingMessage(tgt));
       }
       try {
-        if (src === 'signal') {
+        if (src === 'signal' || tgt === 'signal') {
           if (force) {
             try {
               await fetch('/api/signal/chats/refresh', { credentials: 'same-origin' });
@@ -1715,14 +2013,16 @@
           const dir = await loadSignalDirectoryChatsFromApi();
           if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
           recentSourceChatsByPlatform.signal = dir.chats;
-          if (dir.ok) {
-            signalSourceChatsLoadError = '';
-            setFlowStatusFor('source', '', '');
-          } else if (dir.error) {
-            signalSourceChatsLoadError = dir.error;
-            setFlowStatusFor('source', 'error', dir.error);
-          } else {
-            signalSourceChatsLoadError = '';
+          if (src === 'signal') {
+            if (dir.ok) {
+              signalSourceChatsLoadError = '';
+              setFlowStatusFor('source', '', '');
+            } else if (dir.error) {
+              signalSourceChatsLoadError = dir.error;
+              setFlowStatusFor('source', 'error', dir.error);
+            } else {
+              signalSourceChatsLoadError = '';
+            }
           }
         } else {
           signalSourceChatsLoadError = '';
@@ -1749,10 +2049,8 @@
           signalSourceChatsLoadError = msg;
           recentSourceChatsByPlatform.signal = [];
         }
-        // Don't spam alerts on transient WA Web reloads (Puppeteer detached frame).
-        if (!String(msg).includes('detached Frame')) {
-          alert(msg);
-        }
+        // Помилка вже відображена через setFlowStatusFor — alert тут не потрібен,
+        // бо модалка залишається відкритою і користувач бачить повідомлення в UI.
       }
       renderSourcePicker();
       renderTargetPicker();
@@ -1763,7 +2061,7 @@
       const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
       const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
       if (side === 'source') {
-        setFlowStatusFor('source', 'info', platformLoadingMessage(src));
+        setFlowStatusFor('source', 'loading', platformLoadingMessage(src));
         try {
           let refreshWarning = '';
           if (src === 'signal') {
@@ -1808,11 +2106,19 @@
         }
       } else if (side === 'target') {
         if (tgt === 'fastapi') return;
-        setFlowStatusFor('target', 'info', platformLoadingMessage(tgt));
+        setFlowStatusFor('target', 'loading', platformLoadingMessage(tgt));
         try {
+          if (tgt === 'signal') {
+            // Для Signal таргету завантажуємо Chat Directory (те саме джерело що й source picker)
+            const dir = await loadSignalDirectoryChatsFromApi();
+            if (dir.ok) recentSourceChatsByPlatform.signal = dir.chats;
+          }
           const list = await ensureChatsLoaded(tgt, true);
-          const count = Array.isArray(list) ? list.length : 0;
-          setFlowStatusFor('target', 'info', `Оновлення завершено: ${count} чатів.`);
+          const count = (recentSourceChatsByPlatform['signal'] || []).filter(c => c.chatId).length
+            || Array.isArray(list) ? list.length : 0;
+          setFlowStatusFor('target', 'info', `Оновлення завершено: ${tgt === 'signal'
+            ? (recentSourceChatsByPlatform['signal'] || []).filter(c => c.chatId).length
+            : (Array.isArray(list) ? list.length : 0)} чатів.`);
         } catch (e) {
           const msg = e?.name === 'AbortError' ? 'Таймаут завантаження чатів. Натисніть "Оновити" ще раз.' : (e?.message || 'Не вдалося отримати чати');
           setFlowStatusFor('target', 'error', msg);
@@ -1825,20 +2131,51 @@
 
     function getFilteredChats(platform, query) {
       const q = String(query || '').trim().toLowerCase();
-      const list = chatsCacheByPlatform[platform] || [];
-      let merged = list.slice();
+      let merged = [];
       if (platform === 'signal') {
-        const recent = Array.isArray(lastStateSnapshot?.signal?.recentIncomingChats)
-          ? lastStateSnapshot.signal.recentIncomingChats
-          : [];
-        for (const r of recent) {
-          const id = String(r?.id || '').trim();
+        // Для Signal-таргету використовуємо той самий Chat Directory що і source picker.
+        // Це гарантує повний список без дублів (кожна група — один запис із chatId).
+        const seenIds = new Set();
+        const seenNames = new Set();
+        const addItem = (id, name) => {
+          const sid = String(id || '').trim();
+          if (!sid || seenIds.has(sid)) return;
+          const sname = String(name || sid).trim().toLowerCase();
+          if (seenNames.has(sname)) return;
+          seenIds.add(sid);
+          seenNames.add(sname);
+          merged.push({ id: sid, name: String(name || sid).trim() });
+        };
+        // Для target-пікера Signal показуємо тільки групи (не особисті контакти)
+        const isGroupId = (id) => {
+          const s = String(id || '').trim().toLowerCase();
+          return s.startsWith('group.') || s.includes('/') || s.endsWith('=');
+        };
+        // Пріоритет 1: Chat Directory (вже завантажений для source/target)
+        for (const c of recentSourceChatsByPlatform['signal'] || []) {
+          const id = String(c?.chatId || '').trim();
           if (!id) continue;
-          if (merged.some((x) => x.id === id)) continue;
+          if (String(c?.chatType || '') !== 'group' && !isGroupId(id)) continue; // тільки групи
+          const name = String(c?.resolvedName || c?.manualLabel || c?.displayName || id).trim();
+          addItem(id, name);
+        }
+        // Доповнення: raw bridge cache (тільки group IDs, без особистих контактів)
+        for (const c of chatsCacheByPlatform['signal'] || []) {
+          const id = String(c?.id || '').trim();
+          if (!isGroupId(id)) continue; // пропускаємо телефони/UUID-контакти
+          addItem(id, String(c?.name || ''));
+        }
+        // Доповнення: нещодавні вхідні групові чати зі стану
+        for (const r of Array.isArray(lastStateSnapshot?.signal?.recentIncomingChats)
+          ? lastStateSnapshot.signal.recentIncomingChats : []) {
+          const id = String(r?.id || '').trim();
+          if (!isGroupId(id)) continue;
           const rawName = String(r?.name || '').trim();
           const name = rawName && rawName !== id ? rawName : `Нещодавній чат (${id.slice(0, 10)}...)`;
-          merged.unshift({ id, name });
+          addItem(id, name);
         }
+      } else {
+        merged = (chatsCacheByPlatform[platform] || []).slice();
       }
       if (!q) return merged.slice(0, 200);
       return merged
@@ -1941,7 +2278,7 @@
         const selectedInList = list.find((x) => String(x.chatKey || '') === key);
         const selectedInFull = fullRecent.find((x) => String(x.chatKey || '') === key);
         const selected = selectedInList || selectedInFull;
-        const selectedMissing = Boolean(key) && !selectedInFull;
+        const selectedMissing = Boolean(key) && fullRecent.length > 0 && !selectedInFull;
         const chipText = key
           ? selected
             ? buildSignalDisambiguatedLabel(selected, labelCounts)
@@ -2041,7 +2378,17 @@
       syncTargetHiddenSelect();
     }
 
+    function switchModalTab(name) {
+      document.querySelectorAll('#flowModal .modal-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.modalTab === name);
+      });
+      document.querySelectorAll('#flowModal .modal-tab-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.id === 'mtab-' + name);
+      });
+    }
+
     function openFlowModal(flow) {
+      switchModalTab('main');
       // New modal session: invalidate any in-flight async work from previous open.
       flowModalSession = Date.now();
       chatsLoadSession = 0;
@@ -2072,7 +2419,9 @@
         const localModalSession = flowModalSession;
         renderSourcePicker();
         renderTargetPicker();
-        if (flow && flow.sourcePlatform === 'signal' && !flowSelectedSourceChatKey && flow.id) {
+        // resolve-source тільки для legacy-flow без sourceChatKey.
+        // Якщо flow вже мав sourceChatKey — або він встановлений, або юзер свідомо очистив → не перезаписуємо.
+        if (flow && flow.sourcePlatform === 'signal' && !flowSelectedSourceChatKey && flow.id && !flow.sourceChatKey) {
           try {
             const res = await fetch(
               '/api/chat-directory/resolve-source?flowId=' + encodeURIComponent(flow.id),
@@ -2154,7 +2503,12 @@
       const body = {
         name: document.getElementById('flowName').value.trim(),
         sourceChatKey: sourcePlatform === 'signal' ? flowSelectedSourceChatKey : null,
-        sourceChatIds: sourcePlatform === 'signal' && signalSourceCanonicalChatId ? [signalSourceCanonicalChatId] : sourceChatIds,
+        // Для Signal-джерела: передаємо тільки канонічний chatId, або порожній масив —
+        // щоб сервер (normalizeAutomation) міг гідратувати з каталогу по sourceChatKey.
+        // Не передаємо старі sourceChatIds з flowSelectedSourceIds: вони можуть бути від попередньо вибраного чату.
+        sourceChatIds: sourcePlatform === 'signal'
+          ? (signalSourceCanonicalChatId ? [signalSourceCanonicalChatId] : [])
+          : sourceChatIds,
         sourceChatRefs:
           sourcePlatform === 'signal' && flowSelectedSourceChatKey
             ? [{ id: signalSourceCanonicalChatId || flowSelectedSourceChatKey, name: signalSourceDisplayForSave }]
@@ -2238,6 +2592,7 @@
         if (delBtn) {
           const id = decodeURIComponent(delBtn.getAttribute('data-flowid'));
           deleteFlow(id);
+          return;
         }
       });
     }
@@ -2279,23 +2634,29 @@
       renderState(st);
     }
 
+    let deleteFlowInProgress = false;
     async function deleteFlow(id) {
+      if (deleteFlowInProgress) return;
       if (!confirm('Видалити цю автоматизацію?')) return;
+      deleteFlowInProgress = true;
       const res = await fetch('/api/flows/' + encodeURIComponent(id), {
         method: 'DELETE',
         credentials: 'same-origin'
       });
       if (res.status === 401) {
+        deleteFlowInProgress = false;
         window.location.href = '/login.html';
         return;
       }
       const data = await res.json();
       if (!data.ok) {
+        deleteFlowInProgress = false;
         alert(data.message || 'Помилка');
         return;
       }
       const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
       renderState(st);
+      deleteFlowInProgress = false;
     }
 
     async function initialLoad() {

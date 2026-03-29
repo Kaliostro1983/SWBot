@@ -4,7 +4,7 @@ const axios = require('axios');
 const PORT = Number(process.env.PORT || 3002);
 const SIGNAL_CLI_BASE_URL = String(process.env.SIGNAL_CLI_BASE_URL || 'http://signal-cli-api:8080').trim();
 const SIGNAL_ACCOUNT_NUMBER = String(process.env.SIGNAL_ACCOUNT_NUMBER || '').trim();
-const SIGNAL_RECEIVE_TIMEOUT_SEC = Number(process.env.SIGNAL_RECEIVE_TIMEOUT_SEC || 1);
+const SIGNAL_RECEIVE_TIMEOUT_SEC = Number(process.env.SIGNAL_RECEIVE_TIMEOUT_SEC || 20);
 const SIGNAL_API_SLOW_TIMEOUT_MS = Math.max(30000, Number(process.env.SIGNAL_API_SLOW_TIMEOUT_MS || 90000));
 const SIGNAL_INCLUDE_TECHNICAL_IDS = String(process.env.SIGNAL_INCLUDE_TECHNICAL_IDS || '0').trim() === '1';
 const ACCOUNT_CACHE_TTL_MS = 30000;
@@ -62,17 +62,27 @@ function normalizeIncomingMessages(raw) {
         : [];
   return arr
     .map((m) => {
-      const source = m?.envelope?.source || m?.source || m?.chatId || m?.groupId || '';
-      // signal-cli-api group id lives under envelope.dataMessage.groupInfo.groupId
-      // (envelope.groupInfo may be absent)
+      const env = m?.envelope || {};
+
+      // Пропускаємо службові повідомлення без контенту
+      if (env.typingMessage || env.receiptMessage) return null;
+
+      // signal-cli-api може повертати повідомлення двох типів:
+      // 1. dataMessage — повідомлення від іншого учасника
+      // 2. syncMessage.sentMessage — повідомлення надіслане самим акаунтом (з іншого девайсу)
+      const dataMsg = env.dataMessage || env.syncMessage?.sentMessage || {};
+
+      const source = env.source || m?.source || m?.chatId || m?.groupId || '';
       const groupId =
-        m?.envelope?.dataMessage?.groupInfo?.groupId ||
-        m?.envelope?.groupInfo?.groupId ||
+        dataMsg?.groupInfo?.groupId ||
+        dataMsg?.groupV2?.id ||
+        env.groupInfo?.groupId ||
         m?.groupId ||
         '';
       const rawChatId = String(groupId || source || '').trim();
       const chatId = groupId ? `group.${String(groupId).trim()}` : rawChatId;
       if (!chatId) return null;
+
       const chatCandidates = [];
       const addCandidate = (v) => {
         const s = String(v || '').trim();
@@ -82,21 +92,36 @@ function normalizeIncomingMessages(raw) {
       addCandidate(chatId);
       if (groupId) {
         const g = String(groupId).trim();
-        addCandidate(g); // raw group id
-        addCandidate(`group.${g}`); // canonical group id used across the app
+        addCandidate(g);              // raw group id
+        addCandidate(`group.${g}`);  // canonical group id used across the app
       }
       if (source) addCandidate(String(source).trim());
-      const text = String(
-        m?.envelope?.dataMessage?.message || m?.message || m?.text || ''
-      ).trim();
-      const id = String(m?.envelope?.timestamp || m?.timestamp || Date.now());
+
+      const text = String(dataMsg?.message || m?.message || m?.text || '').trim();
+      const id = String(env.timestamp || m?.timestamp || Date.now());
+
+      // Collect attachment metadata so callers can download via GET /attachment/:id
+      const rawAttachments = Array.isArray(dataMsg?.attachments)
+        ? dataMsg.attachments
+        : Array.isArray(m?.attachments)
+          ? m.attachments
+          : [];
+      const attachments = rawAttachments
+        .map((a) => ({
+          id: String(a?.id || '').trim(),
+          contentType: String(a?.contentType || a?.content_type || 'application/octet-stream').trim(),
+          filename: String(a?.filename || '').trim()
+        }))
+        .filter((a) => a.id);
+
       return {
         id: `${chatId}_${id}`,
         chatId,
         chatCandidates,
         text,
-        author: m?.envelope?.source || m?.source || null,
-        timestamp: Number(m?.envelope?.timestamp || m?.timestamp || Date.now())
+        attachments,
+        author: env.source || m?.source || null,
+        timestamp: Number(env.timestamp || m?.timestamp || Date.now())
       };
     })
     .filter(Boolean);
@@ -145,7 +170,7 @@ app.get('/', (_req, res) => {
   res.json({
     ok: true,
     service: 'signal-bridge',
-    endpoints: ['/health', '/chats', '/messages', '/send', '/link', '/linked']
+    endpoints: ['/health', '/chats', '/messages', '/send', '/attachment/:id', '/link', '/linked']
   });
 });
 
@@ -183,7 +208,7 @@ app.get('/chats', async (_req, res) => {
       { timeout: SIGNAL_API_SLOW_TIMEOUT_MS }
     );
     const groupsRes = await axios
-      .get(`${baseUrl()}/v1/groups/${encodeURIComponent(account)}`, { timeout: 15000 })
+      .get(`${baseUrl()}/v1/groups/${encodeURIComponent(account)}`, { timeout: SIGNAL_API_SLOW_TIMEOUT_MS })
       .catch((err) => ({ __error: err }));
 
     const chats = [];
@@ -239,26 +264,39 @@ app.get('/messages', async (_req, res) => {
   }
 });
 
+app.get('/attachment/:id', async (req, res) => {
+  try {
+    const attachId = String(req.params.id || '').trim();
+    if (!attachId) return res.status(400).json({ ok: false, message: 'id is required' });
+    const apiRes = await axios.get(
+      `${baseUrl()}/v1/attachments/${encodeURIComponent(attachId)}`,
+      { responseType: 'arraybuffer', timeout: SIGNAL_API_SLOW_TIMEOUT_MS }
+    );
+    const contentType = String(apiRes.headers['content-type'] || 'application/octet-stream');
+    const b64 = Buffer.from(apiRes.data).toString('base64');
+    res.json({ ok: true, base64: b64, contentType });
+  } catch (error) {
+    const status = error?.response?.status || 500;
+    res.status(status).json({ ok: false, message: error.message, body: null });
+  }
+});
+
 app.post('/send', async (req, res) => {
   try {
     const account = await resolveAccount();
     const chatId = String(req.body?.chatId || '').trim();
     const text = String(req.body?.text || '').trim();
+    const base64Attachments = Array.isArray(req.body?.base64Attachments) ? req.body.base64Attachments : [];
     if (!chatId) return res.status(400).json({ ok: false, message: 'chatId is required' });
-    if (!text) return res.status(400).json({ ok: false, message: 'text is required' });
+    if (!text && base64Attachments.length === 0) return res.status(400).json({ ok: false, message: 'text or base64Attachments is required' });
 
-    const payload = {
-      message: text,
-      number: account
-    };
-    // Групи мають id, звичайні чати — номер.
-    if (/^\+?\d+$/.test(chatId)) {
-      payload.recipients = [chatId];
-    } else {
-      payload.groupId = chatId;
-    }
+    const payload = { number: account, recipients: [chatId] };
+    // /v2/send приймає recipients для будь-якого типу адресата:
+    // для груп — повний group.* ID, для особистих — номер телефону.
+    if (text) payload.message = text;
+    if (base64Attachments.length > 0) payload.base64_attachments = base64Attachments;
 
-    await axios.post(`${baseUrl()}/v2/send`, payload, { timeout: 20000 });
+    await axios.post(`${baseUrl()}/v2/send`, payload, { timeout: 60000 });
     res.json({ ok: true });
   } catch (error) {
     const status = error?.response?.status || 500;
