@@ -1,38 +1,25 @@
 [
   {
-    "id": "flow_1774195501688_xuum20rr",
-    "name": "Signal -> WhatsApp",
-    "direction": "signal_whatsapp",
-    "sourcePlatform": "signal",
-    "targetPlatform": "whatsapp",
+    "id": "flow_1774594788701_k21fqjy7",
+    "name": "Перехоплення 63 - Тест",
+    "direction": "wa_fastapi",
+    "sourcePlatform": "whatsapp",
+    "targetPlatform": "fastapi",
+    "sourceChatKey": null,
     "sourceChatIds": [
-      "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0="
+      "120363194806689869@g.us"
     ],
     "sourceChatRefs": [
       {
-        "id": "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
-        "name": "Автоматизація",
-        "aliases": [
-          "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
-          "a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
-          "711d4b90-4c17-407c-9f61-ae40bf24348f",
-          "group.711d4b90-4c17-407c-9f61-ae40bf24348f",
-          "signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f",
-          "group.signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f"
-        ]
+        "id": "120363194806689869@g.us",
+        "name": "Перехоплення_63",
+        "aliases": []
       }
     ],
-    "aliases": [
-      "711d4b90-4c17-407c-9f61-ae40bf24348f",
-      "signal-group:711d4b90-4c17-407c-9f61-ae40bf24348f"
-    ],
-    "sourceChatId": "group.a0twYjd5elR0amlFRGh3U3RXNFFBTTJGYUNRdEN6YnNnRG1LOFhjb040bz0=",
+    "sourceChatId": "120363194806689869@g.us",
     "fastapiUrl": null,
-    "targetChatId": "120363407577191397@g.us",
-    "targetChatRef": {
-      "id": "120363407577191397@g.us",
-      "name": "Чат-2222222222"
-    },
+    "targetChatId": null,
+    "targetChatRef": null,
     "paused": false,
     "keywords": "*",
     "frequencies": "",
