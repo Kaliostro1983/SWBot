@@ -1,91 +1,87 @@
 @echo off
-chcp 65001 >nul
+setlocal
 cd /d "%~dp0"
 
 echo ============================================
-echo   Signal Docker — первинне налаштування
+echo   Signal Docker Setup
 echo ============================================
 echo.
 
-:: Перевіряємо наявність Docker
+:: Check Docker installed
 docker --version >nul 2>&1
 if errorlevel 1 (
-    echo [ПОМИЛКА] Docker не знайдено.
-    echo Завантажте та встановіть Docker Desktop:
-    echo https://www.docker.com/products/docker-desktop/
+    echo [ERROR] Docker not found.
+    echo Install Docker Desktop: https://www.docker.com/products/docker-desktop/
     echo.
     pause
     exit /b 1
 )
+echo [OK] Docker found
 
-echo [OK] Docker знайдено:
-docker --version
-echo.
-
-:: Перевіряємо що Docker запущений
+:: Check Docker running
 docker info >nul 2>&1
 if errorlevel 1 (
-    echo [ПОМИЛКА] Docker Desktop не запущений.
-    echo Запустіть Docker Desktop і спробуйте знову.
+    echo [ERROR] Docker Desktop is not running.
+    echo Start Docker Desktop and try again.
     echo.
     pause
     exit /b 1
 )
-
-echo [OK] Docker Desktop запущений.
+echo [OK] Docker Desktop is running
 echo.
 
-:: Перевіряємо наявність docker-compose файлу
+:: Check compose file
 if not exist "docker-compose.signal.yml" (
-    echo [ПОМИЛКА] Файл docker-compose.signal.yml не знайдено.
-    echo Переконайтесь, що батник запускається з папки проєкту.
+    echo [ERROR] docker-compose.signal.yml not found.
+    echo Run this bat from the project folder.
     echo.
     pause
     exit /b 1
 )
 
-:: Зупиняємо старі контейнери якщо є
-echo Зупиняємо старі контейнери (якщо є)...
-docker compose -f docker-compose.signal.yml down 2>nul
+:: Stop and remove old containers by name (in case they exist from a previous run)
+echo Stopping old containers if any...
+docker stop signal-cli-api >nul 2>&1
+docker stop signal-bridge >nul 2>&1
+docker rm signal-cli-api >nul 2>&1
+docker rm signal-bridge >nul 2>&1
 echo.
 
-:: Збираємо та запускаємо контейнери
-echo Збираємо та запускаємо контейнери...
-echo (Перший запуск може тривати 2-5 хвилин — завантажується образ signal-cli-rest-api)
+:: Build and start containers
+echo Building and starting containers...
+echo (First run may take 2-5 min to download signal-cli-rest-api image)
 echo.
 docker compose -f docker-compose.signal.yml up -d --build
 if errorlevel 1 (
     echo.
-    echo [ПОМИЛКА] Не вдалося запустити контейнери.
-    echo Перегляньте помилки вище.
+    echo [ERROR] Failed to start containers.
+    echo See errors above.
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo Чекаємо поки контейнери стартують...
+echo Waiting for containers to start...
 timeout /t 5 /nobreak >nul
 
-:: Перевіряємо статус
 echo.
-echo Статус контейнерів:
+echo Container status:
 docker compose -f docker-compose.signal.yml ps
-echo.
 
-:: Перевіряємо доступність bridge
-echo Перевіряємо signal-bridge...
+echo.
 curl -s --max-time 10 http://localhost:3002/health >nul 2>&1
 if errorlevel 1 (
-    echo [УВАГА] signal-bridge ще не відповідає. Зачекайте хвилину і спробуйте запустити run_bot.bat
+    echo [WARN] signal-bridge not responding yet.
+    echo Wait 1 minute then run run_bot.bat
 ) else (
-    echo [OK] signal-bridge доступний на http://localhost:3002
+    echo [OK] signal-bridge is up at http://localhost:3002
 )
 
 echo.
 echo ============================================
-echo   Готово! Тепер запустіть run_bot.bat
-echo   щоб під'єднати Signal через QR-код.
+echo   Done! Now run run_bot.bat
 echo ============================================
 echo.
 pause
+endlocal
