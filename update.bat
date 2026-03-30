@@ -1,5 +1,5 @@
 @echo off
-chcp 65001 >nul
+setlocal
 cd /d "%~dp0"
 
 echo ============================================
@@ -37,6 +37,7 @@ echo.
 
 :: Install/update npm dependencies
 echo Updating npm dependencies...
+set PUPPETEER_SKIP_DOWNLOAD=true
 npm install --legacy-peer-deps
 if errorlevel 1 (
     echo [ERROR] npm install failed.
@@ -48,7 +49,7 @@ echo.
 :: Check if signal-bridge was updated — rebuild container if so
 git diff HEAD@{1} --name-only 2>nul | findstr /i "signal-bridge" >nul 2>&1
 if not errorlevel 1 (
-    echo [INFO] signal-bridge changed — rebuilding Docker container...
+    echo [INFO] signal-bridge changed - rebuilding Docker container...
     docker --version >nul 2>&1
     if errorlevel 1 (
         echo [WARN] Docker not found, skipping container rebuild.
@@ -78,3 +79,4 @@ echo   Update complete. Restart run_bot.bat
 echo ============================================
 echo.
 pause
+endlocal

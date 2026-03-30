@@ -85,6 +85,7 @@ echo INFO: dir=%CD% >> "%LOGFILE%"
 
 echo.
 echo Installing npm dependencies (1-3 min)...
+set PUPPETEER_SKIP_DOWNLOAD=true
 npm install --legacy-peer-deps >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo [ERROR] npm install failed. See install_log.txt
