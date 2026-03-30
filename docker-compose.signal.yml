@@ -9,8 +9,8 @@ services:
       - /bin/sh
       - -c
       - while true; do rm -rf /tmp/libsignal*; sleep 3600; done & exec /entrypoint.sh
-    ports:
-      - "8080:8080"
+    # Port 8080 is internal only — signal-bridge reaches it via Docker network.
+    # No external port binding to avoid conflicts with other services.
     environment:
       # Вкажіть номер, який використовується в signal-cli.
       # Для кількох номерів можна додати через кому.
