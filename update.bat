@@ -38,7 +38,7 @@ echo.
 :: Install/update npm dependencies
 echo Updating npm dependencies...
 set PUPPETEER_SKIP_DOWNLOAD=true
-npm install --legacy-peer-deps
+npm install --legacy-peer-deps --no-audit
 if errorlevel 1 (
     echo [ERROR] npm install failed.
     pause
