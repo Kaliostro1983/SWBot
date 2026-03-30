@@ -1,20 +1,19 @@
 @echo off
-chcp 65001 > nul
+setlocal
 
+set LOGFILE=%~dp0install_log.txt
+echo Installation started %date% %time% > "%LOGFILE%"
+echo.
 echo ============================================
 echo   WS Bridge - Installation
 echo ============================================
 echo.
 
-:: Log file next to this bat
-set LOGFILE=%~dp0install_log.txt
-echo Installation started %date% %time% > "%LOGFILE%"
-
 :: Check Node.js
 node -v > nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js not found.
-    echo Please install Node.js 18+ from https://nodejs.org
+    echo         Install Node.js 18+ from https://nodejs.org
     echo ERROR: Node.js not found >> "%LOGFILE%"
     echo.
     pause
@@ -28,7 +27,7 @@ echo OK: Node.js %NODE_VER% >> "%LOGFILE%"
 git --version > nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Git not found.
-    echo Please install Git from https://git-scm.com
+    echo         Install Git from https://git-scm.com
     echo ERROR: Git not found >> "%LOGFILE%"
     echo.
     pause
@@ -41,7 +40,7 @@ echo OK: Git found >> "%LOGFILE%"
 docker --version > nul 2>&1
 if errorlevel 1 (
     echo [WARN] Docker not found. Signal bridge will not work.
-    echo Install Docker Desktop from https://www.docker.com/products/docker-desktop
+    echo        Install Docker Desktop: https://www.docker.com/products/docker-desktop
     echo WARN: Docker not found >> "%LOGFILE%"
 ) else (
     echo [OK] Docker found
@@ -50,16 +49,16 @@ if errorlevel 1 (
 
 echo.
 
-:: Determine install folder — subfolder SWBot next to this bat
+:: Install folder = SWBot subfolder next to this bat file
 set INSTALL_DIR=%~dp0SWBot
 
 if exist "%INSTALL_DIR%\.git" (
-    echo [INFO] Folder already exists, pulling latest changes...
-    echo INFO: git pull in %INSTALL_DIR% >> "%LOGFILE%"
+    echo [INFO] Folder exists, pulling latest changes...
+    echo INFO: git pull >> "%LOGFILE%"
     cd /d "%INSTALL_DIR%"
     git pull >> "%LOGFILE%" 2>&1
     if errorlevel 1 (
-        echo [ERROR] git pull failed. See install_log.txt for details.
+        echo [ERROR] git pull failed. See install_log.txt
         echo ERROR: git pull failed >> "%LOGFILE%"
         pause
         exit /b 1
@@ -67,14 +66,12 @@ if exist "%INSTALL_DIR%\.git" (
     goto install_deps
 )
 
-:: Clone repository
-echo Cloning from https://github.com/Kaliostro1983/SWBot.git ...
+:: Clone
+echo Cloning repository...
 echo INFO: cloning into %INSTALL_DIR% >> "%LOGFILE%"
 git clone https://github.com/Kaliostro1983/SWBot.git "%INSTALL_DIR%" >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERROR] Failed to clone repository.
-    echo Check internet connection and that Git is working.
-    echo See install_log.txt for details.
+    echo [ERROR] Clone failed. See install_log.txt
     echo ERROR: git clone failed >> "%LOGFILE%"
     pause
     exit /b 1
@@ -84,15 +81,13 @@ echo OK: cloned >> "%LOGFILE%"
 
 :install_deps
 cd /d "%INSTALL_DIR%"
-echo INFO: working dir %CD% >> "%LOGFILE%"
+echo INFO: dir=%CD% >> "%LOGFILE%"
 
-:: Install npm dependencies
 echo.
-echo Installing npm dependencies (may take 1-3 min)...
+echo Installing npm dependencies (1-3 min)...
 npm install --legacy-peer-deps >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo [ERROR] npm install failed.
-    echo See install_log.txt for details.
+    echo [ERROR] npm install failed. See install_log.txt
     echo ERROR: npm install failed >> "%LOGFILE%"
     pause
     exit /b 1
@@ -100,12 +95,12 @@ if errorlevel 1 (
 echo [OK] Dependencies installed
 echo OK: npm install done >> "%LOGFILE%"
 
-:: Create .env if missing
+:: Create .env
 if not exist ".env" (
     if exist ".env.example" (
         copy ".env.example" ".env" > nul
-        echo [OK] Created .env from .env.example - edit it before starting!
-        echo OK: .env created from example >> "%LOGFILE%"
+        echo [OK] Created .env from .env.example
+        echo OK: .env created >> "%LOGFILE%"
     ) else (
         echo [WARN] .env.example not found. Create .env manually.
         echo WARN: no .env.example >> "%LOGFILE%"
@@ -119,17 +114,21 @@ echo Installation finished %date% %time% >> "%LOGFILE%"
 
 echo.
 echo ============================================
-echo   Installation complete!
+echo   Done! Next steps:
 echo ============================================
 echo.
-echo Next steps:
-echo   1. Open %INSTALL_DIR%
-echo   2. Edit .env  ^(set PANEL_PASSWORD, check SIGNAL_API_URL^)
-echo   3. Edit docker-compose.signal.yml  ^(set SIGNAL_ACCOUNT_NUMBER^)
-echo   4. Run setup_docker.bat  ^(builds Signal containers^)
-echo   5. Run run_bot.bat  ^(starts the service^)
-echo   6. Open http://localhost:3001
+echo   1. Edit %INSTALL_DIR%\.env
+echo      - set PANEL_PASSWORD
+echo      - check SIGNAL_API_URL
 echo.
-echo Log saved to: %~dp0install_log.txt
+echo   2. Edit docker-compose.signal.yml
+echo      - set SIGNAL_ACCOUNT_NUMBER
+echo.
+echo   3. Run setup_docker.bat
+echo   4. Run run_bot.bat
+echo   5. Open http://localhost:3001
+echo.
+echo   Log: %~dp0install_log.txt
 echo.
 pause
+endlocal
