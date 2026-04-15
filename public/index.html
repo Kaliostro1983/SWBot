@@ -593,6 +593,48 @@
       padding: 8px 14px;
       display: none;
     }
+    /* ─── Toast notifications ─────────────────────────────── */
+    #toastContainer {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .toast {
+      min-width: 240px;
+      max-width: 400px;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      pointer-events: auto;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+      animation: toastIn 0.25s ease;
+      word-break: break-word;
+    }
+    .toast-error {
+      background: #2d1a1a;
+      border: 1px solid rgba(248,113,113,0.3);
+      color: #F87171;
+    }
+    .toast-info {
+      background: #1e2430;
+      border: 1px solid rgba(96,165,250,0.25);
+      color: #93C5FD;
+    }
+    .toast-ok {
+      background: #152a1e;
+      border: 1px solid rgba(52,211,153,0.25);
+      color: #6EE7B7;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
     .conn-account { margin-top: 8px; }
     .conn-account .conn-phone { font-weight: 700; color: var(--text); font-size: 15px; }
     .conn-account .conn-name { font-size: 13px; color: var(--muted); margin-top: 2px; }
@@ -786,49 +828,34 @@
         <h1 class="page-title">Інтеграція</h1>
         <div class="grid-2">
           <div class="card">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-              <div>
-                <h2 style="margin:0 0 4px;">WhatsApp <span id="waConnStatus" class="conn-status status-checking">—</span></h2>
-                <div id="waConnMeta"></div>
-              </div>
-              <div class="flow-actions" style="margin-top:0;">
-                <button type="button" class="icon-btn" title="Вийти з акаунта WhatsApp" onclick="callApi('/api/logout')">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
-                <button type="button" class="icon-btn danger" title="Скинути сесію та відсканувати QR знову" onclick="resetSession()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                </button>
-              </div>
-            </div>
+            <h2 style="margin:0 0 4px;">WhatsApp <span id="waConnStatus" class="conn-status status-checking">—</span></h2>
+            <div id="waConnMeta"></div>
             <div id="waConnProgress" class="conn-progress">
               <span class="conn-spinner"></span><span id="waConnProgressText">Перевірка підключення…</span>
             </div>
             <div id="waConnError" class="conn-error"></div>
+            <img id="waQr" alt="WhatsApp QR" style="display:none;width:220px;border-radius:12px;background:#fff;padding:10px;margin-top:12px;" />
+            <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waManageToolbar">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="callApi('/api/logout')">Вийти з акаунта</button>
+              <button type="button" class="btn btn-sm btn-danger" onclick="resetSession()">Видалити сесію</button>
+            </div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waConnectToolbar">
-              <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="waConnect()">Зʼєднатися</button>
+              <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="waConnect()">Підключити акаунт</button>
             </div>
           </div>
           <div class="card">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-              <div>
-                <h2 style="margin:0 0 4px;">Signal <span id="signalConnStatus" class="conn-status status-checking">—</span></h2>
-                <div id="signalConnMeta"></div>
-              </div>
-              <div class="flow-actions" style="margin-top:0;">
-                <button type="button" class="icon-btn" title="Оновити QR / Перелінкувати" onclick="signalLoginQr()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-                </button>
-                <button type="button" class="icon-btn danger" title="Відключити Signal" onclick="signalDisconnect()">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                </button>
-              </div>
-            </div>
+            <h2 style="margin:0 0 4px;">Signal <span id="signalConnStatus" class="conn-status status-checking">—</span></h2>
+            <div id="signalConnMeta"></div>
             <div id="signalConnProgress" class="conn-progress">
               <span class="conn-spinner"></span><span id="signalConnProgressText">Перевірка підключення…</span>
             </div>
             <div id="signalConnError" class="conn-error"></div>
+            <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="signalManageToolbar">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="signalDisconnect()">Вийти з акаунта</button>
+              <button type="button" class="btn btn-sm btn-danger" onclick="signalLoginQr()">Видалити сесію</button>
+            </div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="signalConnectToolbar">
-              <button type="button" class="btn btn-accent" id="signalConnectBtn" onclick="signalLoginQr()">Зʼєднатися</button>
+              <button type="button" class="btn btn-accent" id="signalConnectBtn" onclick="signalStart()">Підключити акаунт</button>
             </div>
             <div id="signalLinkAlert" class="signal-alert"></div>
             <img id="signalQr" alt="Signal QR" style="display:none; width: 260px; border-radius: 12px; background: #fff; padding: 10px; margin-top: 8px;" />
@@ -1176,25 +1203,41 @@
       // WhatsApp card
       const waConnected = Boolean(s?.authenticated) && Boolean(s?.ready);
       const waStatus = String(s?.status || 'idle');
-      // Server is actively connecting (auto-restore or manual start)
+      // Server is actively connecting (auto-restore or manual start), but NOT awaiting QR scan
       const waAutoConnecting = !waConnected && (waStatus === 'starting' || waStatus === 'authenticated');
       const waConnStatus = document.getElementById('waConnStatus');
       const waConnMeta = document.getElementById('waConnMeta');
       const waConnectToolbar = document.getElementById('waConnectToolbar');
+      const waManageToolbar = document.getElementById('waManageToolbar');
       const waConnProgress = document.getElementById('waConnProgress');
       const waConnProgressText = document.getElementById('waConnProgressText');
       const waConnError = document.getElementById('waConnError');
+      const waQrImg = document.getElementById('waQr');
+      const waQrAvailable = Boolean(s?.qrAvailable) && Boolean(s?.qrAvailableData);
+      // Якщо є QR — одразу показуємо його і виходимо з "progress" режиму
+      if (waQrAvailable) {
+        waConnectUiInProgress = false;
+      }
       // Якщо з'єднання завершилось успішно — скидаємо прапорець
       if (waConnectUiInProgress && waConnected) {
         waConnectUiInProgress = false;
       }
       // Якщо сервер підключається автоматично — показуємо connecting UI
-      if (!waConnectUiInProgress && waAutoConnecting) {
+      if (!waConnectUiInProgress && waAutoConnecting && !waQrAvailable) {
         waConnectUiInProgress = true;
       }
       // Якщо підключення завершилось невдало (сервер більше не connecting) — скидаємо прапорець
       if (waConnectUiInProgress && !waConnected && !waAutoConnecting) {
         waConnectUiInProgress = false;
+      }
+      // QR image: show when qr available, hide otherwise
+      if (waQrImg) {
+        if (waQrAvailable) {
+          waQrImg.src = s.qrAvailableData;
+          waQrImg.style.display = 'block';
+        } else {
+          waQrImg.style.display = 'none';
+        }
       }
       if (!waConnectUiInProgress) {
         if (waConnected) {
@@ -1213,7 +1256,18 @@
           }
           if (waConnProgress) waConnProgress.style.display = 'none';
           if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+          if (waManageToolbar) waManageToolbar.style.display = 'flex';
           if (waConnError) waConnError.style.display = 'none';
+        } else if (waQrAvailable) {
+          // QR mode: show status + hint, hide connect button
+          if (waConnStatus) {
+            waConnStatus.textContent = 'очікування сканування';
+            waConnStatus.className = 'conn-status status-connecting';
+          }
+          if (waConnMeta) waConnMeta.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-top:4px;">Відскануйте QR у WhatsApp → Пов\'язані пристрої</div>';
+          if (waConnProgress) waConnProgress.style.display = 'none';
+          if (waManageToolbar) waManageToolbar.style.display = 'none';
+          if (waConnectToolbar) waConnectToolbar.style.display = 'none';
         } else {
           if (waConnStatus) {
             waConnStatus.textContent = 'not connected';
@@ -1221,6 +1275,7 @@
           }
           if (waConnMeta) waConnMeta.innerHTML = '';
           if (waConnProgress) waConnProgress.style.display = 'none';
+          if (waManageToolbar) waManageToolbar.style.display = 'none';
           if (waConnectToolbar) waConnectToolbar.style.display = 'flex';
         }
       } else {
@@ -1230,6 +1285,7 @@
           waConnStatus.className = 'conn-status status-connecting';
         }
         if (waConnProgress) waConnProgress.style.display = 'flex';
+        if (waManageToolbar) waManageToolbar.style.display = 'none';
         if (waConnectToolbar) waConnectToolbar.style.display = 'none';
         if (waConnProgressText && waAutoConnecting) {
           waConnProgressText.textContent = waStatus === 'authenticated' ? 'Аутентифікація…' : 'Підключення…';
@@ -1248,6 +1304,7 @@
       const signalConnStatus = document.getElementById('signalConnStatus');
       const signalConnMeta = document.getElementById('signalConnMeta');
       const signalConnectToolbar = document.getElementById('signalConnectToolbar');
+      const signalManageToolbar = document.getElementById('signalManageToolbar');
       const signalConnProgress = document.getElementById('signalConnProgress');
       const signalConnProgressText = document.getElementById('signalConnProgressText');
       const signalConnError = document.getElementById('signalConnError');
@@ -1280,6 +1337,7 @@
           }
           if (signalConnProgress) signalConnProgress.style.display = 'none';
           if (signalConnectToolbar) signalConnectToolbar.style.display = 'none';
+          if (signalManageToolbar) signalManageToolbar.style.display = 'flex';
           if (signalConnError) signalConnError.style.display = 'none';
         } else {
           if (signalConnStatus) {
@@ -1288,6 +1346,7 @@
           }
           if (signalConnMeta) signalConnMeta.innerHTML = '';
           if (signalConnProgress) signalConnProgress.style.display = 'none';
+          if (signalManageToolbar) signalManageToolbar.style.display = 'none';
           if (signalConnectToolbar) signalConnectToolbar.style.display = 'flex';
         }
       } else {
@@ -1297,6 +1356,7 @@
           signalConnStatus.className = 'conn-status status-connecting';
         }
         if (signalConnProgress) signalConnProgress.style.display = 'flex';
+        if (signalManageToolbar) signalManageToolbar.style.display = 'none';
         if (signalConnectToolbar) signalConnectToolbar.style.display = 'none';
         if (signalConnProgressText && signalAutoChecking) {
           signalConnProgressText.textContent = 'Перевірка підключення…';
@@ -1515,6 +1575,20 @@
         .replace(/"/g, '&quot;');
     }
 
+    function showToast(msg, type = 'error', durationMs = 6000) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const el = document.createElement('div');
+      el.className = `toast toast-${type}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.style.transition = 'opacity 0.3s';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 350);
+      }, durationMs);
+    }
+
     async function callApi(url) {
       const res = await fetch(url, { method: 'POST', credentials: 'same-origin' });
       if (res.status === 401) {
@@ -1523,7 +1597,7 @@
       }
       const data = await res.json();
       console.log(data);
-      if (!data.ok && data.message) alert(data.message);
+      if (!data.ok && data.message) showToast(data.message, 'error');
     }
 
     async function waConnect() {
@@ -1554,8 +1628,15 @@
       }
     }
 
+    async function signalStart() {
+      const res = await fetch('/api/signal/start', { method: 'POST', credentials: 'same-origin' });
+      if (res.status === 401) { window.location.href = '/login.html'; return; }
+      const data = await res.json().catch(() => ({}));
+      if (data.ok === false) showToast(data.message || 'Не вдалося запустити Signal', 'error');
+    }
+
     async function signalDisconnect() {
-      if (!confirm('Відключити Signal від bridge? Для повторного підключення потрібно буде відсканувати QR.')) return;
+      if (!confirm('Зупинити Signal у сервісі?\n\nСервіс перестане отримувати та відправляти повідомлення через Signal. Ваш акаунт Signal залишається незмінним.\n\nДля повторного запуску натисніть "Зʼєднатися".')) return;
       await callApi('/api/signal/logout');
     }
 
@@ -1565,7 +1646,7 @@
     }
 
     async function resetSession() {
-      if (!confirm('Видалити локальну сесію та знову відсканувати QR?')) return;
+      if (!confirm('Видалити збережену сесію WhatsApp?\n\nПісля цього потрібно буде відсканувати QR-код заново для входу в акаунт.')) return;
       await callApi('/api/reset-session');
     }
 
@@ -1575,7 +1656,7 @@
       appendSignalConsoleLine('Signal link: start request');
       const linked = Boolean(lastStateSnapshot?.signal?.linked);
       if (linked) {
-        const ok = confirm('Signal вже підключений. Згенерувати новий QR для перелінкування?');
+        const ok = confirm('Видалити поточну сесію Signal і підключити акаунт заново?\n\nБуде згенеровано новий QR-код для сканування в додатку Signal.');
         if (!ok) {
           appendSignalConsoleLine('Signal link: skipped (already linked)');
           return;
@@ -2911,5 +2992,6 @@
     bindFlowListClicks();
     // integration subtabs removed
   </script>
+  <div id="toastContainer"></div>
 </body>
 </html>

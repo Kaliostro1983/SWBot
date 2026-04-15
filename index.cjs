@@ -2103,11 +2103,16 @@ async function checkSignalLinkedStatus() {
   if (signalLinkInProgress) return null;
   try {
     const { linked, accounts } = await signalLinkedCheck(70000);
-    state.signal.linked = linked;
-    state.signal.linkedAccounts = accounts;
-    state.signal.lastLinkedCheckAt = nowIso();
-    if (linked) {
-      state.signal.qrDataUrl = null;
+    // Only write to state if the worker is still running.
+    // This prevents an in-flight check from overwriting a manual logout.
+    if (state.signal.running) {
+      state.signal.linked = linked;
+      state.signal.linkedAccounts = accounts;
+      state.signal.lastLinkedCheckAt = nowIso();
+      if (linked) {
+        state.signal.qrDataUrl = null;
+      }
+      broadcastEvent('state', getPublicState());
     }
     return { linked, accounts };
   } catch (error) {
@@ -2115,11 +2120,14 @@ async function checkSignalLinkedStatus() {
       // Old bridge versions may not support /linked yet.
       return null;
     }
-    state.signal.lastLinkedCheckAt = nowIso();
-    state.signal.linked = null;
-    state.signal.linkedAccounts = [];
-    state.signal.lastErrorAt = nowIso();
-    state.signal.lastError = error.message;
+    if (state.signal.running) {
+      state.signal.lastLinkedCheckAt = nowIso();
+      state.signal.linked = null;
+      state.signal.linkedAccounts = [];
+      state.signal.lastErrorAt = nowIso();
+      state.signal.lastError = error.message;
+      broadcastEvent('state', getPublicState());
+    }
     pushLogThrottled(
       'signal_linked_status_failed',
       60000,
@@ -3221,30 +3229,27 @@ async function logoutBot() {
 
   try {
     await client.logout();
-    await client.destroy();
-
-    client = null;
-    lastQr = null;
-
-    state.authenticated = false;
-    state.ready = false;
-    state.qrAvailable = false;
-    state.clientInfo = null;
-
-    setStatus('logged_out');
-    stopSignalWorker();
-    pushLog('INFO', 'Logged out');
-
-    return { ok: true, message: 'Logged out' };
-  } catch (error) {
-    pushLog('ERROR', 'Logout failed', {
-      message: error.message,
-      stack: error.stack
+  } catch (logoutErr) {
+    pushLog('WARN', 'client.logout() threw (likely detached frame), forcing destroy', {
+      message: logoutErr.message
     });
-
-    setStatus('error');
-    return { ok: false, message: error.message };
   }
+
+  // Always destroy the client and clean up state, regardless of logout success
+  try { await client.destroy(); } catch {}
+  client = null;
+  lastQr = null;
+
+  state.authenticated = false;
+  state.ready = false;
+  state.qrAvailable = false;
+  state.clientInfo = null;
+
+  setStatus('logged_out');
+  stopSignalWorker();
+  pushLog('INFO', 'Logged out');
+
+  return { ok: true, message: 'Logged out' };
 }
 
 async function resetSession() {
@@ -3325,6 +3330,34 @@ app.post('/api/logout', async (req, res) => {
 
 app.post('/api/reset-session', async (req, res) => {
   res.json(await resetSession());
+});
+
+app.post('/api/signal/start', async (req, res) => {
+  try {
+    if (!SIGNAL_API_URL) {
+      return res.json({ ok: false, message: 'SIGNAL_API_URL not configured' });
+    }
+    stopSignalWorker(); // ensure clean state before starting
+    startSignalWorker();
+    pushLog('INFO', 'Signal worker restarted via API');
+    res.json({ ok: true, message: 'Signal worker started' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: error.message || String(error) });
+  }
+});
+
+app.post('/api/signal/logout', async (req, res) => {
+  try {
+    stopSignalWorker();
+    state.signal.linked = false;
+    state.signal.linkedAccounts = [];
+    state.signal.qrDataUrl = null;
+    broadcastEvent('state', getPublicState());
+    pushLog('INFO', 'Signal disconnected from service (worker stopped)');
+    res.json({ ok: true, message: 'Signal disconnected' });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: error.message || String(error) });
+  }
 });
 
 app.post('/api/signal/link', async (req, res) => {
