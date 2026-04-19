@@ -593,6 +593,63 @@
       padding: 8px 14px;
       display: none;
     }
+    /* ─── Docker troubleshoot hint ───────────────────────── */
+    .docker-hint {
+      margin-top: 20px;
+      background: rgba(251,146,60,0.06);
+      border: 1px solid rgba(251,146,60,0.28);
+      border-radius: var(--radius-sm);
+      padding: 18px 20px 14px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+    }
+    .docker-hint-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .docker-hint-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #FB923C;
+      flex: 1;
+    }
+    .docker-hint-dismiss {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 0 2px;
+      transition: color 0.15s;
+    }
+    .docker-hint-dismiss:hover { color: var(--text); }
+    .docker-hint-sub {
+      color: var(--muted);
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .docker-hint ol {
+      margin: 0 0 8px 0;
+      padding-left: 22px;
+    }
+    .docker-hint ol li { margin-bottom: 6px; }
+    .docker-hint-cmd {
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #9CE99C;
+      margin: 6px 0 10px 22px;
+      white-space: pre;
+      line-height: 1.8;
+    }
+
     /* ─── Toast notifications ─────────────────────────────── */
     #toastContainer {
       position: fixed;
@@ -860,6 +917,27 @@
             <div id="signalLinkAlert" class="signal-alert"></div>
             <img id="signalQr" alt="Signal QR" style="display:none; width: 260px; border-radius: 12px; background: #fff; padding: 10px; margin-top: 8px;" />
           </div>
+        </div>
+
+        <!-- Підказка з'являється автоматично після ~60 с невдалого підключення Signal -->
+        <div id="dockerHint" class="docker-hint" style="display:none;">
+          <div class="docker-hint-head">
+            <span>⚠️</span>
+            <span class="docker-hint-title">Signal не підключається — перевірте Docker</span>
+            <button class="docker-hint-dismiss" onclick="dismissDockerHint()" title="Закрити">✕</button>
+          </div>
+          <div class="docker-hint-sub">Підключення триває понад хвилину. Найчастіша причина — Docker Desktop не працює або контейнери Signal зупинені.</div>
+          <ol>
+            <li>Переконайтесь, що <strong>Docker Desktop</strong> запущений (іконка в системному треї без червоного знака).</li>
+            <li>Якщо Docker завис — правий клік на іконці Docker Desktop → <strong>Restart</strong>. Зачекайте ~30 секунд.</li>
+            <li>Після перезапуску Docker відкрийте термінал і запустіть контейнери Signal:</li>
+          </ol>
+          <div class="docker-hint-cmd">cd D:\Armor\whatsapp-bot
+docker compose -f docker-compose.signal.yml up -d</div>
+          <ol start="4">
+            <li>Натисніть <strong>«Підключити акаунт»</strong> у картці Signal вище.</li>
+            <li>Якщо Signal раніше не реєструвався — натисніть <strong>«Видалити сесію»</strong>, щоб отримати QR-код для сканування.</li>
+          </ol>
         </div>
       </section>
 
@@ -1198,6 +1276,23 @@
     let waConnectUiInProgress = false;
     let signalLinkUiInProgress = false;
     let signalAutoCheckUiInProgress = false; // окремий прапорець для авто-перевірки (не QR-лінкування)
+    let signalConnectingStartTs = null;      // коли Signal почав підключатися (мс)
+    let dockerHintDismissed = false;         // чи закрив користувач підказку вручну
+
+    function dismissDockerHint() {
+      dockerHintDismissed = true;
+      const el = document.getElementById('dockerHint');
+      if (el) el.style.display = 'none';
+    }
+
+    // Перевіряємо кожні 5 секунд: якщо Signal підключається >60 с — показуємо підказку
+    setInterval(() => {
+      if (!signalConnectingStartTs || dockerHintDismissed) return;
+      if (Date.now() - signalConnectingStartTs >= 60000) {
+        const el = document.getElementById('dockerHint');
+        if (el) el.style.display = 'block';
+      }
+    }, 5000);
 
     function renderState(s) {
       // WhatsApp card
@@ -1370,6 +1465,17 @@
             signalConnError.style.display = 'none';
           }
         }
+        // Запускаємо таймер для підказки Docker (скидається при кожній новій спробі)
+        if (!signalConnectingStartTs) {
+          signalConnectingStartTs = Date.now();
+          dockerHintDismissed = false;
+        }
+      }
+      // Якщо Signal більше не в стані "connecting" — ховаємо підказку і скидаємо таймер
+      if (!signalShowConnecting) {
+        signalConnectingStartTs = null;
+        const dh = document.getElementById('dockerHint');
+        if (dh) dh.style.display = 'none';
       }
       signalStatusKnown = true;
 
