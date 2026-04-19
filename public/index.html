@@ -1361,6 +1361,15 @@
         if (signalConnProgressText && signalAutoChecking) {
           signalConnProgressText.textContent = 'Перевірка підключення…';
         }
+        // Show last error during connecting so the user knows if signal-cli is unreachable
+        if (signalConnError) {
+          if (sig.lastError && sig.linked === null) {
+            signalConnError.textContent = 'Сигнал не відповідає: ' + sig.lastError;
+            signalConnError.style.display = 'block';
+          } else {
+            signalConnError.style.display = 'none';
+          }
+        }
       }
       signalStatusKnown = true;
 

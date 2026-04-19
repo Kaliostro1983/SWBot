@@ -1040,27 +1040,6 @@ function validateAutomation(f, allFlows, excludeId) {
       return 'Цільовий чат не може збігатися з чатом-джерелом';
     }
   }
-  if (!f.paused) {
-    const others = allFlows.filter((x) => x.id !== excludeId);
-    const srcKey = String(f.sourceChatKey || '').trim();
-    if (srcKey && p.sourcePlatform === 'signal') {
-      const conflictKey = others.find(
-        (o) =>
-          !o.paused &&
-          String(o.sourceChatKey || '').trim() === srcKey &&
-          inferPlatforms(o).sourcePlatform === 'signal'
-      );
-      if (conflictKey) {
-        return `Той самий chatKey джерела вже в активній автоматизації «${conflictKey.name}»`;
-      }
-    }
-    for (const sid of f.sourceChatIds) {
-      const conflict = others.find((o) => !o.paused && getSourceIds(o).includes(sid));
-      if (conflict) {
-        return `Чат уже в активній автоматизації «${conflict.name}» (на паузі — можна дублювати)`;
-      }
-    }
-  }
   return null;
 }
 
@@ -1591,9 +1570,21 @@ async function signalHealthCheck(timeoutMs = 6000) {
   return signalApiRequest('get', '/health', undefined, undefined, timeoutMs);
 }
 
-async function signalLinkedCheck(timeoutMs = 70000) {
+async function signalLinkedCheck(timeoutMs = 12000) {
   const base = SIGNAL_API_URL.replace(/\/+$/, '');
-  const rawRes = await axios.get(`${base}/linked`, { timeout: Math.max(1000, Number(timeoutMs) || 70000) });
+  let rawRes;
+  try {
+    rawRes = await axios.get(`${base}/linked`, { timeout: Math.max(1000, Number(timeoutMs) || 12000) });
+  } catch (axiosErr) {
+    // Prefer the bridge's own error message over the generic axios status message
+    const bridgeMsg = axiosErr?.response?.data?.message;
+    if (bridgeMsg) {
+      const e = new Error(bridgeMsg);
+      e.response = axiosErr.response;
+      throw e;
+    }
+    throw axiosErr;
+  }
   const raw = rawRes.data;
   const accounts = Array.isArray(raw?.accounts)
     ? raw.accounts.map((x) => String(x || '').trim()).filter(Boolean)
@@ -2102,7 +2093,7 @@ async function checkSignalLinkedStatus() {
   if (!SIGNAL_API_URL) return null;
   if (signalLinkInProgress) return null;
   try {
-    const { linked, accounts } = await signalLinkedCheck(70000);
+    const { linked, accounts } = await signalLinkedCheck(12000);
     // Only write to state if the worker is still running.
     // This prevents an in-flight check from overwriting a manual logout.
     if (state.signal.running) {
@@ -2670,7 +2661,7 @@ async function pollSignalMessages() {
   // Do not hammer /messages until account is linked.
   if (state.signal.linked !== true) {
     const now = Date.now();
-    if (now - signalLastLinkedProbeTs >= 15000) {
+    if (now - signalLastLinkedProbeTs >= 5000) {
       signalLastLinkedProbeTs = now;
       await checkSignalLinkedStatus();
     }
@@ -2738,6 +2729,9 @@ async function pollSignalMessages() {
 function startSignalWorker() {
   if (!SIGNAL_API_URL || signalPollTimer) return;
   state.signal.running = true;
+  // Reset linked to null so the UI shows "checking" immediately on restart.
+  state.signal.linked = null;
+  state.signal.linkedAccounts = [];
   checkSignalLinkedStatus().catch(() => {});
   pollSignalMessages().catch(() => {});
   signalPollTimer = setInterval(() => {
@@ -4242,8 +4236,10 @@ async function startupAutoInit() {
     prefetchChatsInBackground().catch(() => {});
     return;
   }
-  // On normal restarts, do linked checks with retry instead of forcing relink.
-  for (let i = 0; i < 4; i += 1) {
+  // Quick startup check — just 2 fast probes, then hand off to the worker's own polling.
+  // The worker (startSignalWorker) is already running and will keep checking every 5 s.
+  // Heavy blocking retries here cause 5+ minute stalls when signal-cli is slow to warm up.
+  for (let i = 0; i < 2; i += 1) {
     try {
       const linkedStatus = await checkSignalLinkedStatus();
       if (linkedStatus?.linked === true) {
@@ -4252,13 +4248,13 @@ async function startupAutoInit() {
         return;
       }
     } catch {
-      // ignore transient checks, retry below
+      // ignore — worker will retry
     }
-    await sleep(5000 * (i + 1));
+    if (i === 0) await sleep(3000);
   }
   pushLog(
-    'WARN',
-    'Signal linked check did not confirm linked state after startup retries; relink remains manual'
+    'INFO',
+    'Signal linked state not confirmed at startup; worker will keep polling'
   );
   if (!AUTO_SIGNAL_RELINK_ON_SERVICE_START) {
     prefetchChatsInBackground().catch(() => {});

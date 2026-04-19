@@ -127,8 +127,9 @@ function normalizeIncomingMessages(raw) {
     .filter(Boolean);
 }
 
-async function listAccounts() {
-  const apiRes = await axios.get(`${baseUrl()}/v1/accounts`, { timeout: SIGNAL_API_SLOW_TIMEOUT_MS });
+async function listAccounts(timeoutMs) {
+  const t = Math.max(1000, Number(timeoutMs) || SIGNAL_API_SLOW_TIMEOUT_MS);
+  const apiRes = await axios.get(`${baseUrl()}/v1/accounts`, { timeout: t });
   return Array.isArray(apiRes.data)
     ? apiRes.data.map((x) => String(x || '').trim()).filter(Boolean)
     : [];
@@ -176,7 +177,9 @@ app.get('/', (_req, res) => {
 
 app.get('/linked', async (_req, res) => {
   try {
-    const accounts = await listAccounts();
+    // Use a short timeout — /linked is a quick presence check, not a long-poll.
+    // The main slow timeout is reserved for /messages (receive long-poll).
+    const accounts = await listAccounts(10000);
     const normalizedTarget = SIGNAL_ACCOUNT_NUMBER.replace(/\s+/g, '');
     const targetMatched = normalizedTarget
       ? accounts.some((acc) => String(acc).replace(/\s+/g, '') === normalizedTarget)
