@@ -1671,9 +1671,9 @@ docker compose -f docker-compose.signal.yml up -d</div>
             </div>
           </div>
           <div class="flow-actions">
-            <button type="button" class="icon-btn flow-dup-btn" data-flowid="${fid}" onclick="duplicateFlow(decodeURIComponent('${fid}'))" title="Дублювати">${ICON_COPY}</button>
-            <button type="button" class="icon-btn flow-pause-btn" data-flowid="${fid}" onclick="togglePauseFlow(decodeURIComponent('${fid}'))" title="${pauseTitle}">${pauseIcon}</button>
-            <button type="button" class="icon-btn flow-edit-btn" data-flowid="${fid}" onclick="editFlow(decodeURIComponent('${fid}'))" title="Редагувати">${ICON_EDIT}</button>
+            <button type="button" class="icon-btn flow-dup-btn" data-flowid="${fid}" title="Дублювати">${ICON_COPY}</button>
+            <button type="button" class="icon-btn flow-pause-btn" data-flowid="${fid}" title="${pauseTitle}">${pauseIcon}</button>
+            <button type="button" class="icon-btn flow-edit-btn" data-flowid="${fid}" title="Редагувати">${ICON_EDIT}</button>
             <button type="button" class="icon-btn flow-del-btn danger" data-flowid="${fid}" title="Видалити">${ICON_TRASH}</button>
           </div>
         </div>
@@ -2660,18 +2660,18 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const sel = document.getElementById('flowSources');
       const sourceChatIds = Array.from(flowSelectedSourceIds || []);
       if (sourcePlatform === 'signal' && !flowSelectedSourceChatKey) {
-        alert('Оберіть вихідний чат Signal зі списку каталогу (або перевірте помилку завантаження вище).');
+        showToast('Оберіть вихідний чат Signal зі списку каталогу (або перевірте помилку завантаження вище).', 'error');
         return;
       }
       if (sourcePlatform !== 'signal' && sourceChatIds.length === 0) {
-        alert('Оберіть хоча б один чат-джерело.');
+        showToast('Оберіть хоча б один чат-джерело.', 'error');
         return;
       }
       let targetChatId = null;
       if (targetPlatform === 'whatsapp' || targetPlatform === 'signal') {
         targetChatId = String(flowTargetChatId || '').trim();
         if (!targetChatId) {
-          alert('Оберіть цільовий чат.');
+          showToast('Оберіть цільовий чат.', 'error');
           return;
         }
       }
@@ -2733,7 +2733,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }
       const data = await res.json();
       if (!data.ok) {
-        alert(data.message || 'Помилка збереження');
+        showToast(data.message || 'Помилка збереження', 'error');
         return;
       }
       closeFlowModal();
@@ -2754,12 +2754,12 @@ docker compose -f docker-compose.signal.yml up -d</div>
         const st = await res.json();
         const f = (st.flows || []).find((x) => x.id === id);
         if (!f) {
-          alert('Автоматизацію не знайдено. Спробуйте оновити сторінку.');
+          showToast('Автоматизацію не знайдено. Спробуйте оновити сторінку.', 'error');
           return;
         }
         openFlowModal(f);
       } catch (e) {
-        alert(e?.message || 'Не вдалося відкрити редагування автоматизації.');
+        showToast(e?.message || 'Не вдалося відкрити редагування автоматизації.', 'error');
       }
     }
 
@@ -2804,7 +2804,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }
       const data = await res.json();
       if (!data.ok) {
-        alert(data.message || 'Не вдалося дублювати');
+        showToast(data.message || 'Не вдалося дублювати', 'error');
         return;
       }
       const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
@@ -2823,7 +2823,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }
       const data = await res.json();
       if (!data.ok) {
-        alert(data.message || 'Не вдалося змінити паузу');
+        showToast(data.message || 'Не вдалося змінити паузу', 'error');
         return;
       }
       const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
@@ -2847,7 +2847,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const data = await res.json();
       if (!data.ok) {
         deleteFlowInProgress = false;
-        alert(data.message || 'Помилка');
+        showToast(data.message || 'Помилка', 'error');
         return;
       }
       const st = await fetch('/api/state', { credentials: 'same-origin' }).then((r) => r.json());
