@@ -1304,7 +1304,12 @@ const state = {
     ignored: 0,
     posted: 0,
     sent: 0,
-    errors: 0
+    errors: 0,
+    // Per-platform breakdown for the activity monitor
+    signalReceived: 0,
+    waReceived: 0,
+    waSent: 0,
+    signalSent: 0
   },
   logs: []
 };
@@ -1432,54 +1437,55 @@ function noteIgnored(reason) {
   state.activity.ignoredReasonsTotal[key] = cur + 1;
 }
 
+function d(cur, prev, key) {
+  return Math.max(0, Number(cur[key] || 0) - Number(prev[key] || 0));
+}
+
 function startActivitySummaryLogs() {
   if (activityLogTimer) return;
   activityCountersSnapshot = { ...state.counters };
   activityIgnoredReasonsSnapshot = { ...(state.activity.ignoredReasonsTotal || {}) };
   activityLogTimer = setInterval(() => {
     const cur = state.counters;
-    const prev = activityCountersSnapshot || {
-      received: 0,
-      accepted: 0,
-      ignored: 0,
-      posted: 0,
-      sent: 0,
-      errors: 0
-    };
+    const prev = activityCountersSnapshot || {};
     const delta = {
-      received: Math.max(0, Number(cur.received || 0) - Number(prev.received || 0)),
-      accepted: Math.max(0, Number(cur.accepted || 0) - Number(prev.accepted || 0)),
-      ignored: Math.max(0, Number(cur.ignored || 0) - Number(prev.ignored || 0)),
-      posted: Math.max(0, Number(cur.posted || 0) - Number(prev.posted || 0)),
-      sent: Math.max(0, Number(cur.sent || 0) - Number(prev.sent || 0)),
-      errors: Math.max(0, Number(cur.errors || 0) - Number(prev.errors || 0))
+      received:       d(cur, prev, 'received'),
+      accepted:       d(cur, prev, 'accepted'),
+      ignored:        d(cur, prev, 'ignored'),
+      posted:         d(cur, prev, 'posted'),
+      sent:           d(cur, prev, 'sent'),
+      errors:         d(cur, prev, 'errors'),
+      signalReceived: d(cur, prev, 'signalReceived'),
+      waReceived:     d(cur, prev, 'waReceived'),
+      waSent:         d(cur, prev, 'waSent'),
+      signalSent:     d(cur, prev, 'signalSent')
     };
     const reasonsNow = { ...(state.activity.ignoredReasonsTotal || {}) };
     const reasonsPrev = { ...(activityIgnoredReasonsSnapshot || {}) };
     const reasonKeys = new Set([...Object.keys(reasonsNow), ...Object.keys(reasonsPrev)]);
     const ignoredReasonsMinute = {};
     for (const k of reasonKeys) {
-      const d = Math.max(0, Number(reasonsNow[k] || 0) - Number(reasonsPrev[k] || 0));
-      if (d > 0) ignoredReasonsMinute[k] = d;
+      const dd = Math.max(0, Number(reasonsNow[k] || 0) - Number(reasonsPrev[k] || 0));
+      if (dd > 0) ignoredReasonsMinute[k] = dd;
     }
     state.activity.lastMinute = delta;
     state.activity.ignoredReasonsLastMinute = ignoredReasonsMinute;
     state.activity.lastMinuteAt = nowIso();
     activityCountersSnapshot = { ...cur };
     activityIgnoredReasonsSnapshot = reasonsNow;
-    pushLog('INFO', 'Minute activity', {
-      minute: delta,
-      ignoredReasonsMinute,
-      total: {
-        received: cur.received,
-        accepted: cur.accepted,
-        ignored: cur.ignored,
-        posted: cur.posted,
-        sent: cur.sent,
-        errors: cur.errors,
-        ignoredReasonsTotal: reasonsNow
-      }
-    });
+
+    // Human-readable per-platform activity summary (ACTIVITY level — shown in monitor view)
+    const anyActivity = delta.signalReceived || delta.waReceived || delta.waSent || delta.signalSent || delta.errors;
+    if (anyActivity) {
+      if (delta.signalReceived > 0) pushLog('ACTIVITY', `↓ Оброблено повідомлень Signal: ${delta.signalReceived}`);
+      if (delta.waReceived > 0)     pushLog('ACTIVITY', `↓ Оброблено повідомлень WhatsApp: ${delta.waReceived}`);
+      if (delta.waSent > 0)         pushLog('ACTIVITY', `↑ Надіслано повідомлень WhatsApp: ${delta.waSent}`);
+      if (delta.signalSent > 0)     pushLog('ACTIVITY', `↑ Надіслано повідомлень Signal: ${delta.signalSent}`);
+      if (delta.errors > 0)         pushLog('ACTIVITY', `⚠ Помилок за хвилину: ${delta.errors}`);
+    } else {
+      // Heartbeat once per minute so operator knows bot is alive
+      pushLog('ACTIVITY', '— Активності немає');
+    }
   }, 60000);
 }
 
@@ -2305,6 +2311,7 @@ async function sendWithRateLimit(chatId, text) {
   lastSendTs = Date.now();
   state.lastSendAt = nowIso();
   state.counters.sent += 1;
+  state.counters.waSent += 1;
 
   pushLog('INFO', 'Forward sent', {
     targetChat: chatId,
@@ -2325,6 +2332,7 @@ async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption)
   lastSendTs = Date.now();
   state.lastSendAt = nowIso();
   state.counters.sent += 1;
+  state.counters.waSent += 1;
 
   pushLog('INFO', 'Forward sent (media)', {
     targetChat: chatId,
@@ -2406,6 +2414,7 @@ async function forwardWaToSignal(flow, msg) {
   await sendSignalMessage(target, text, base64Attachments);
   state.lastSendAt = nowIso();
   state.counters.sent += 1;
+  state.counters.signalSent += 1;
   pushLog('INFO', 'WA→Signal sent', {
     targetChat: target,
     textLen: text.length,
@@ -2505,6 +2514,7 @@ async function processSignalIncomingMessage(message) {
   state.lastEventAt = nowIso();
   state.lastMessageAt = nowIso();
   state.counters.received += 1;
+  state.counters.signalReceived += 1;
 
   pushLog('INFO', 'Signal flows matched', {
     platform: 'signal',
@@ -2564,6 +2574,7 @@ async function processSignalIncomingMessage(message) {
     await sendSignalMessage(target, rawText, base64Attachments);
     state.lastSendAt = nowIso();
     state.counters.sent += 1;
+    state.counters.signalSent += 1;
     pushLog('INFO', 'Signal→Signal sent', {
       flowId: flow.id,
       targetChat: target,
@@ -2902,6 +2913,7 @@ function attachClientEvents(instance) {
 
       // KPI statistics count only messages that match configured source chats.
       state.counters.received += 1;
+      state.counters.waReceived += 1;
 
       await Promise.all(matchedWaFlows.map(async (flow) => {
       if (flow.paused === true) {

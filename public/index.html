@@ -593,6 +593,16 @@
       padding: 8px 14px;
       display: none;
     }
+    /* ─── Monitor log lines ──────────────────────────────── */
+    .log-line { display: block; padding: 0; white-space: pre-wrap; word-break: break-word; }
+    .log-activity-recv { color: #4ADE80; }
+    .log-activity-send { color: #67E8F9; }
+    .log-activity-warn { color: #FB923C; }
+    .log-activity-idle { color: #4B5563; }
+    .log-error  { color: #F87171; }
+    .log-warn   { color: #FB923C; }
+    .log-info   { color: #6B7280; }
+
     /* ─── Docker troubleshoot hint ───────────────────────── */
     .docker-hint {
       margin-top: 20px;
@@ -870,6 +880,9 @@
       <button type="button" class="nav-btn" data-nav="flows">
         Автоматизації <span class="badge" id="flowCount">0</span>
       </button>
+      <button type="button" class="nav-btn" data-nav="monitor">
+        Моніторинг
+      </button>
       <button type="button" class="nav-btn" data-nav="settings">
         Налаштування
       </button>
@@ -947,6 +960,20 @@ docker compose -f docker-compose.signal.yml up -d</div>
           <button type="button" class="btn btn-outline" onclick="openFlowModal()">+ Додати автоматизацію</button>
         </div>
         <div id="flowList" class="flow-list"></div>
+      </section>
+
+      <section class="view" id="view-monitor">
+        <h1 class="page-title">Моніторинг</h1>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
+            <span style="font-size:13px;font-weight:600;">Журнал активності</span>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">
+              <input type="checkbox" id="logsVerboseToggle" onchange="setLogsVerbose(this.checked)" />
+              Детально
+            </label>
+          </div>
+          <div id="logs" style="background:#110D0B;padding:12px 14px;height:420px;overflow:auto;font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:12px;line-height:1.7;"></div>
+        </div>
       </section>
 
       <section class="view" id="view-settings">
@@ -1169,10 +1196,49 @@ docker compose -f docker-compose.signal.yml up -d</div>
       return v === null || v === undefined || v === '' ? '—' : String(v);
     }
 
+    let logsVerbose = false;
+    function setLogsVerbose(v) {
+      logsVerbose = Boolean(v);
+      // Re-render the full log from state on toggle
+      fetch('/api/logs', { credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((logs) => {
+          if (!logsEl) return;
+          logsEl.innerHTML = '';
+          for (const item of logs) appendLog(item);
+        })
+        .catch(() => {});
+    }
+
     function appendLog(item) {
       if (!logsEl) return;
-      const meta = item.meta ? ' ' + JSON.stringify(item.meta) : '';
-      logsEl.textContent += `[${item.ts}] [${item.level}] ${item.message}${meta}\n`;
+      const level = String(item.level || 'INFO');
+      // In simplified mode, hide verbose INFO (those with meta payloads)
+      if (!logsVerbose && level === 'INFO') return;
+
+      const ts = String(item.ts || '').slice(11, 19); // HH:MM:SS
+      const msg = String(item.message || '');
+      const meta = logsVerbose && item.meta ? ' ' + JSON.stringify(item.meta) : '';
+
+      let cls = 'log-info';
+      if (level === 'ACTIVITY') {
+        if (msg.startsWith('↓')) cls = 'log-activity-recv';
+        else if (msg.startsWith('↑')) cls = 'log-activity-send';
+        else if (msg.startsWith('⚠')) cls = 'log-activity-warn';
+        else cls = 'log-activity-idle';
+      } else if (level === 'ERROR') {
+        cls = 'log-error';
+      } else if (level === 'WARN') {
+        cls = 'log-warn';
+      }
+
+      const el = document.createElement('span');
+      el.className = 'log-line ' + cls;
+      el.textContent = `[${ts}] ${msg}${meta}\n`;
+      logsEl.appendChild(el);
+
+      // Cap displayed lines at 600
+      while (logsEl.children.length > 600) logsEl.removeChild(logsEl.firstChild);
       logsEl.scrollTop = logsEl.scrollHeight;
     }
 
