@@ -941,18 +941,35 @@
             <span class="docker-hint-title">Signal не підключається — перевірте Docker</span>
             <button class="docker-hint-dismiss" onclick="dismissDockerHint()" title="Закрити">✕</button>
           </div>
-          <div class="docker-hint-sub">Підключення триває понад хвилину. Найчастіша причина — Docker Desktop не працює або контейнери Signal зупинені.</div>
-          <ol>
-            <li>Переконайтесь, що <strong>Docker Desktop</strong> запущений (іконка в системному треї без червоного знака).</li>
-            <li>Якщо Docker завис — правий клік на іконці Docker Desktop → <strong>Restart</strong>. Зачекайте ~30 секунд.</li>
-            <li>Після перезапуску Docker відкрийте термінал і запустіть контейнери Signal:</li>
-          </ol>
-          <div class="docker-hint-cmd">cd D:\Armor\whatsapp-bot
+          <div id="dockerHintSub" class="docker-hint-sub">Підключення триває понад хвилину. Найчастіша причина — Docker Desktop не працює або контейнери Signal зупинені.</div>
+
+          <!-- Варіант А: контейнери не запущені (ECONNREFUSED) -->
+          <div id="dockerHintBodyDown">
+            <ol>
+              <li>Переконайтесь, що <strong>Docker Desktop</strong> запущений (іконка в системному треї без червоного знака).</li>
+              <li>Якщо Docker завис — правий клік на іконці Docker Desktop → <strong>Restart</strong>. Зачекайте ~30 секунд.</li>
+              <li>Після перезапуску Docker відкрийте термінал і запустіть контейнери Signal:</li>
+            </ol>
+            <div class="docker-hint-cmd">cd D:\Armor\whatsapp-bot
 docker compose -f docker-compose.signal.yml up -d</div>
-          <ol start="4">
-            <li>Натисніть <strong>«Підключити акаунт»</strong> у картці Signal вище.</li>
-            <li>Якщо Signal раніше не реєструвався — натисніть <strong>«Видалити сесію»</strong>, щоб отримати QR-код для сканування.</li>
-          </ol>
+            <ol start="4">
+              <li>Натисніть <strong>«Підключити акаунт»</strong> у картці Signal вище.</li>
+              <li>Якщо Signal раніше не реєструвався — натисніть <strong>«Видалити сесію»</strong>, щоб отримати QR-код для сканування.</li>
+            </ol>
+          </div>
+
+          <!-- Варіант Б: контейнери запущені, але timeout (JVM прогрівається або завис) -->
+          <div id="dockerHintBodyTimeout" style="display:none;">
+            <ol>
+              <li><strong>Зачекайте ще 1–2 хвилини</strong> — Java (JVM) у контейнері <code>signal-cli-api</code> прогрівається після старту і тимчасово не відповідає. Бот підключиться автоматично.</li>
+              <li>Якщо минуло більше 5 хвилин і помилка не зникла — перезапустіть контейнер:</li>
+            </ol>
+            <div class="docker-hint-cmd">docker restart signal-cli-api</div>
+            <ol start="3">
+              <li>Якщо є <strong>два</strong> запущені контейнери <code>signal-cli-rest-api</code> (наприклад, <code>swapp-signal</code> і <code>signal-cli-api</code>) — зупиніть зайвий, вони можуть блокувати одне одного:</li>
+            </ol>
+            <div class="docker-hint-cmd">docker stop swapp-signal</div>
+          </div>
         </div>
       </section>
 
@@ -1346,6 +1363,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
     let signalAutoCheckUiInProgress = false; // окремий прапорець для авто-перевірки (не QR-лінкування)
     let signalConnectingStartTs = null;      // коли Signal почав підключатися (мс)
     let dockerHintDismissed = false;         // чи закрив користувач підказку вручну
+    let signalLastKnownError = '';           // остання помилка Signal для вибору тексту підказки
 
     function dismissDockerHint() {
       dockerHintDismissed = true;
@@ -1353,10 +1371,28 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (el) el.style.display = 'none';
     }
 
+    function updateDockerHintContent(err) {
+      const sub = document.getElementById('dockerHintSub');
+      const bodyDown = document.getElementById('dockerHintBodyDown');
+      const bodyTimeout = document.getElementById('dockerHintBodyTimeout');
+      if (!sub || !bodyDown || !bodyTimeout) return;
+      const isTimeout = /timeout|ETIMEDOUT/i.test(err || '');
+      if (isTimeout) {
+        sub.textContent = 'Контейнери запущені, але signal-cli-api ще не відповідає. Найчастіше — JVM прогрівається (1–3 хв). Якщо минуло більше 5 хвилин — перезапустіть контейнер.';
+        bodyDown.style.display = 'none';
+        bodyTimeout.style.display = 'block';
+      } else {
+        sub.textContent = 'Підключення триває понад хвилину. Найчастіша причина — Docker Desktop не працює або контейнери Signal зупинені.';
+        bodyDown.style.display = 'block';
+        bodyTimeout.style.display = 'none';
+      }
+    }
+
     // Перевіряємо кожні 5 секунд: якщо Signal підключається >60 с — показуємо підказку
     setInterval(() => {
       if (!signalConnectingStartTs || dockerHintDismissed) return;
       if (Date.now() - signalConnectingStartTs >= 60000) {
+        updateDockerHintContent(signalLastKnownError);
         const el = document.getElementById('dockerHint');
         if (el) el.style.display = 'block';
       }
@@ -1538,6 +1574,9 @@ docker compose -f docker-compose.signal.yml up -d</div>
           signalConnectingStartTs = Date.now();
           dockerHintDismissed = false;
         }
+        // Оновлюємо текст підказки якщо вона вже видима
+        if (sig.lastError) signalLastKnownError = sig.lastError;
+        if (!dockerHintDismissed) updateDockerHintContent(signalLastKnownError);
       }
       // Якщо Signal більше не в стані "connecting" — ховаємо підказку і скидаємо таймер
       if (!signalShowConnecting) {
