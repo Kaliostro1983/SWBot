@@ -55,12 +55,38 @@ const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
 
 /**
- * Видаляє Chrome SingletonLock та SingletonSocket з папки сесії.
- * Викликається перед кожним client.initialize() щоб уникнути
- * помилки "The browser is already running" після краші або Ctrl+C.
+ * 1. Вбиває orphaned Chrome-процеси що тримають наш профіль wwebjs_auth
+ *    (тільки ті, де командний рядок містить 'wwebjs_auth' — регулярний браузер не чіпаємо).
+ * 2. Видаляє Chrome SingletonLock / SingletonSocket / SingletonCookie.
+ * Викликається перед кожним client.initialize() та при graceful shutdown.
  */
 function cleanupChromeLocks() {
   const sessionDir = path.join(AUTH_DIR, 'session');
+
+  // — Kill orphaned Chrome processes that hold our wwebjs_auth profile ——————
+  if (process.platform === 'win32') {
+    try {
+      const { spawnSync } = require('child_process');
+      const ps = [
+        `Get-WmiObject Win32_Process`,
+        `| Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*wwebjs_auth*' }`,
+        `| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host "[WA] Killed orphaned Chrome PID=$($_.ProcessId)" }`
+      ].join(' ');
+      const result = spawnSync('powershell', ['-NonInteractive', '-Command', ps],
+        { encoding: 'utf8', timeout: 8000 });
+      if (result.stdout && result.stdout.trim()) {
+        console.log(result.stdout.trim());
+      }
+    } catch { /* ignore */ }
+  } else {
+    // Linux / macOS
+    try {
+      require('child_process').spawnSync('pkill', ['-f', 'wwebjs_auth'],
+        { stdio: 'ignore', timeout: 3000 });
+    } catch { /* ignore */ }
+  }
+
+  // — Remove Singleton lock files ————————————————————————————————————————————
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
   for (const f of lockFiles) {
     const p = path.join(sessionDir, f);
