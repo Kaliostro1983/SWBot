@@ -98,17 +98,9 @@ async function cleanupChromeLocks() {
     } catch { /* ignore */ }
   }
 
-  // After confirmed process death, wipe the entire session directory so Chrome
-  // cannot find any stale SingletonLock / socket remnants from the dead process.
-  if (killedAny) {
-    try {
-      if (fs.existsSync(sessionDir)) {
-        fs.rmSync(sessionDir, { recursive: true, force: true });
-        console.log('[WA] Wiped stale session directory after orphan kill');
-      }
-    } catch { /* ignore */ }
-  }
-
+  // After confirmed process death (Wait-Process), remove ONLY the Chrome lock/socket
+  // files — NOT the entire session dir, because Default/ inside contains WhatsApp
+  // authentication data that must survive restarts.
   // — Remove Singleton lock files ————————————————————————————————————————————
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
   for (const f of lockFiles) {
