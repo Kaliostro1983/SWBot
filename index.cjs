@@ -53,6 +53,25 @@ const SIGNAL_RAW_LOG_FILE = path.join(LOG_DIR, 'signal_raw.ndjson');
 const HEALTH_FILE = path.join(LOG_DIR, 'health.json');
 const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
+
+/**
+ * Видаляє Chrome SingletonLock та SingletonSocket з папки сесії.
+ * Викликається перед кожним client.initialize() щоб уникнути
+ * помилки "The browser is already running" після краші або Ctrl+C.
+ */
+function cleanupChromeLocks() {
+  const sessionDir = path.join(AUTH_DIR, 'session');
+  const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  for (const f of lockFiles) {
+    const p = path.join(sessionDir, f);
+    try {
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        console.log(`[WA] Chrome lock removed: ${f}`);
+      }
+    } catch { /* ignore */ }
+  }
+}
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const FLOWS_FILE = path.join(DATA_DIR, 'flows.json');
 const PANEL_AUTH_FILE = path.join(DATA_DIR, 'panel-auth.json');
@@ -2178,6 +2197,26 @@ function writeHealth() {
   );
 }
 
+// ── Graceful shutdown ──────────────────────────────────────────────────────
+// При Ctrl+C або зупинці сервісу — правильно закриваємо Chrome/Puppeteer,
+// щоб не залишати процеси в пам'яті та не блокувати .wwebjs_auth при наступному старті.
+let shutdownInProgress = false;
+async function gracefulShutdown(signal) {
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
+  console.log(`\n[SHUTDOWN] ${signal} received — closing Chrome...`);
+  if (client) {
+    try { await Promise.race([client.destroy(), new Promise(r => setTimeout(r, 5000))]); }
+    catch { /* ignore */ }
+  }
+  cleanupChromeLocks();
+  console.log('[SHUTDOWN] Done.');
+  process.exit(0);
+}
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+// ──────────────────────────────────────────────────────────────────────────
+
 process.on('uncaughtException', (error) => {
   if (isIgnorableWaPuppeteerProtocolError(error)) {
     pushLogThrottled(
@@ -3085,6 +3124,7 @@ async function startBot() {
 
     client = makeClient(puppeteerOptions);
     attachClientEvents(client);
+    cleanupChromeLocks();
     try {
       await client.initialize();
     } catch (firstErr) {
