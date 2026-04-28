@@ -911,6 +911,9 @@
               <button type="button" class="btn btn-ghost btn-sm" onclick="callApi('/api/logout')">Вийти з акаунта</button>
               <button type="button" class="btn btn-sm btn-danger" onclick="resetSession()">Видалити сесію</button>
             </div>
+            <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waStopToolbar">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="waCancelConnect()">Скасувати підключення</button>
+            </div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waConnectToolbar">
               <button type="button" class="btn btn-accent" id="waConnectBtn" onclick="waConnect()">Підключити акаунт</button>
             </div>
@@ -1455,6 +1458,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
           }
           if (waConnProgress) waConnProgress.style.display = 'none';
           if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+          const waStopToolbarA = document.getElementById('waStopToolbar');
+          if (waStopToolbarA) waStopToolbarA.style.display = 'none';
           if (waManageToolbar) waManageToolbar.style.display = 'flex';
           if (waConnError) waConnError.style.display = 'none';
         } else if (waQrAvailable) {
@@ -1467,6 +1472,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
           if (waConnProgress) waConnProgress.style.display = 'none';
           if (waManageToolbar) waManageToolbar.style.display = 'none';
           if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+          const waStopToolbarB = document.getElementById('waStopToolbar');
+          if (waStopToolbarB) waStopToolbarB.style.display = 'none';
         } else {
           if (waConnStatus) {
             waConnStatus.textContent = 'not connected';
@@ -1476,6 +1483,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
           if (waConnProgress) waConnProgress.style.display = 'none';
           if (waManageToolbar) waManageToolbar.style.display = 'none';
           if (waConnectToolbar) waConnectToolbar.style.display = 'flex';
+          const waStopToolbarC = document.getElementById('waStopToolbar');
+          if (waStopToolbarC) waStopToolbarC.style.display = 'none';
         }
       } else {
         // UI is in "connecting" mode — keep spinner visible, update text if server status changed
@@ -1486,6 +1495,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
         if (waConnProgress) waConnProgress.style.display = 'flex';
         if (waManageToolbar) waManageToolbar.style.display = 'none';
         if (waConnectToolbar) waConnectToolbar.style.display = 'none';
+        const waStopToolbar2 = document.getElementById('waStopToolbar');
+        if (waStopToolbar2) waStopToolbar2.style.display = 'flex';
         if (waConnProgressText && waAutoConnecting) {
           waConnProgressText.textContent = waStatus === 'authenticated' ? 'Аутентифікація…' : 'Підключення…';
         }
@@ -1820,6 +1831,11 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const data = await res.json();
       console.log(data);
       if (!data.ok && data.message) showToast(data.message, 'error');
+    }
+
+    async function waCancelConnect() {
+      waConnectUiInProgress = false;
+      try { await fetch('/api/stop', { method: 'POST' }); } catch {}
     }
 
     async function waConnect() {

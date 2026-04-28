@@ -15,9 +15,10 @@ logs/
 *.log
 logs_tmp.json
 
-# Runtime caches (auto-refreshed, no need to version)
+# Runtime caches and auto-built indexes (no need to version)
 data/signal-chats-cache.json
 data/whatsapp-chats-cache.json
+data/chat-directory.json
 
 # Claude Code internal files
 .claude/
