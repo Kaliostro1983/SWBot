@@ -68,15 +68,20 @@ async function cleanupChromeLocks() {
   if (process.platform === 'win32') {
     try {
       const { spawnSync } = require('child_process');
+      // Find PIDs → kill → Wait-Process so OS releases handles before we continue
       const ps = [
-        `$procs = Get-WmiObject Win32_Process`,
-        `| Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*wwebjs_auth*' };`,
-        `$procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue;`,
-        `Write-Host "[WA] Killed orphaned Chrome PID=$($_.ProcessId)" };`,
-        `Write-Output $procs.Count`
+        `$ids = (Get-WmiObject Win32_Process`,
+        `| Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*wwebjs_auth*' }`,
+        `).ProcessId;`,
+        `if ($ids) {`,
+        `  $ids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue;`,
+        `    Write-Host "[WA] Killed orphaned Chrome PID=$_" };`,
+        `  Wait-Process -Id $ids -Timeout 6 -ErrorAction SilentlyContinue`,
+        `};`,
+        `Write-Output $ids.Count`
       ].join(' ');
       const result = spawnSync('powershell', ['-NonInteractive', '-Command', ps],
-        { encoding: 'utf8', timeout: 8000 });
+        { encoding: 'utf8', timeout: 12000 });
       if (result.stdout) {
         const lines = result.stdout.trim().split('\n');
         lines.forEach(l => { if (l.trim().startsWith('[WA]')) console.log(l.trim()); });
@@ -93,8 +98,16 @@ async function cleanupChromeLocks() {
     } catch { /* ignore */ }
   }
 
-  // Give the OS time to release file handles after process termination
-  if (killedAny) await new Promise(r => setTimeout(r, 800));
+  // After confirmed process death, wipe the entire session directory so Chrome
+  // cannot find any stale SingletonLock / socket remnants from the dead process.
+  if (killedAny) {
+    try {
+      if (fs.existsSync(sessionDir)) {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+        console.log('[WA] Wiped stale session directory after orphan kill');
+      }
+    } catch { /* ignore */ }
+  }
 
   // — Remove Singleton lock files ————————————————————————————————————————————
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
