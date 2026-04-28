@@ -60,22 +60,28 @@ const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
  * 2. Видаляє Chrome SingletonLock / SingletonSocket / SingletonCookie.
  * Викликається перед кожним client.initialize() та при graceful shutdown.
  */
-function cleanupChromeLocks() {
+async function cleanupChromeLocks() {
   const sessionDir = path.join(AUTH_DIR, 'session');
+  let killedAny = false;
 
   // — Kill orphaned Chrome processes that hold our wwebjs_auth profile ——————
   if (process.platform === 'win32') {
     try {
       const { spawnSync } = require('child_process');
       const ps = [
-        `Get-WmiObject Win32_Process`,
-        `| Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*wwebjs_auth*' }`,
-        `| ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Host "[WA] Killed orphaned Chrome PID=$($_.ProcessId)" }`
+        `$procs = Get-WmiObject Win32_Process`,
+        `| Where-Object { $_.Name -eq 'chrome.exe' -and $_.CommandLine -like '*wwebjs_auth*' };`,
+        `$procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue;`,
+        `Write-Host "[WA] Killed orphaned Chrome PID=$($_.ProcessId)" };`,
+        `Write-Output $procs.Count`
       ].join(' ');
       const result = spawnSync('powershell', ['-NonInteractive', '-Command', ps],
         { encoding: 'utf8', timeout: 8000 });
-      if (result.stdout && result.stdout.trim()) {
-        console.log(result.stdout.trim());
+      if (result.stdout) {
+        const lines = result.stdout.trim().split('\n');
+        lines.forEach(l => { if (l.trim().startsWith('[WA]')) console.log(l.trim()); });
+        const count = parseInt(lines[lines.length - 1]);
+        if (!isNaN(count) && count > 0) killedAny = true;
       }
     } catch { /* ignore */ }
   } else {
@@ -83,8 +89,12 @@ function cleanupChromeLocks() {
     try {
       require('child_process').spawnSync('pkill', ['-f', 'wwebjs_auth'],
         { stdio: 'ignore', timeout: 3000 });
+      killedAny = true;
     } catch { /* ignore */ }
   }
+
+  // Give the OS time to release file handles after process termination
+  if (killedAny) await new Promise(r => setTimeout(r, 800));
 
   // — Remove Singleton lock files ————————————————————————————————————————————
   const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
@@ -2235,7 +2245,7 @@ async function gracefulShutdown(signal) {
     try { await Promise.race([client.destroy(), new Promise(r => setTimeout(r, 5000))]); }
     catch { /* ignore */ }
   }
-  cleanupChromeLocks();
+  await cleanupChromeLocks();
   console.log('[SHUTDOWN] Done.');
   process.exit(0);
 }
@@ -3150,7 +3160,7 @@ async function startBot() {
 
     client = makeClient(puppeteerOptions);
     attachClientEvents(client);
-    cleanupChromeLocks();
+    await cleanupChromeLocks();
     try {
       await client.initialize();
     } catch (firstErr) {
@@ -3163,6 +3173,7 @@ async function startBot() {
       });
       try { await client.destroy(); } catch {}
       client = null;
+      await cleanupChromeLocks(); // ensure Chrome is dead before retry
       puppeteerOptions = {
         ...buildPuppeteerOptions(),
         timeout: WA_LAUNCH_TIMEOUT_MS * 2,
@@ -3183,6 +3194,8 @@ async function startBot() {
       stack: error.stack
     });
 
+    if (client) { try { await client.destroy(); } catch {} }
+    await cleanupChromeLocks(); // kill Chrome left behind by failed initialize
     client = null;
     setStatus('error');
     return { ok: false, message: error.message };
