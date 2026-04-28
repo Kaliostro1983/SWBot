@@ -3888,6 +3888,25 @@ app.get('/api/messenger-chats', async (req, res) => {
 
     let stats = { added: 0, updated: 0, total: chats.length };
 
+    // When the user didn't explicitly request a refresh and we have cached data,
+    // serve it immediately (even if stale) so the UI never blocks on a live fetch.
+    // Explicit ?refresh=1 (Оновити button) still triggers a full live fetch.
+    const serveStaleCache = !refresh && stale && chats.length > 0;
+    if (serveStaleCache) {
+      const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
+      console.log(
+        `[CACHE] messenger-chats serving stale cache immediately (background refresh skipped) platform=${platform} ageMs=${cacheAgeMs(cachedUpdatedAt)}`
+      );
+      return res.json({
+        ok: true,
+        chats: out,
+        source: 'cache',
+        refreshed: false,
+        cache: { updatedAt: cachedUpdatedAt, ttlMs: MESSENGER_CHATS_CACHE_TTL_MS, stale: true },
+        stats
+      });
+    }
+
     if (shouldRefresh) {
       if (platform === 'signal') {
         if (!SIGNAL_API_URL) {

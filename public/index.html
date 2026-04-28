@@ -886,10 +886,12 @@
       <button type="button" class="nav-btn" data-nav="settings">
         Налаштування
       </button>
+      <a href="/faq.html" target="_blank" class="nav-btn" style="text-decoration:none;">
+        FAQ / Довідка
+      </a>
       <div class="sidebar-foot">
         <span id="appVersion" class="sidebar-version" title="Версія з файлу VERSION">—</span>
         <span>Локальна панель · порт змінних середовища</span>
-        <a href="/faq.html" target="_blank" style="color:var(--muted);font-size:11px;text-decoration:none;opacity:0.8;margin-top:2px;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">FAQ / Довідка</a>
       </div>
     </aside>
 
@@ -2259,9 +2261,20 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
       setFlowStatusFor('source', '', '');
       setFlowStatusFor('target', '', '');
-      setFlowStatusFor('source', 'loading', platformLoadingMessage(src));
-      if (tgt !== 'fastapi') {
+      // Only show loading spinner when cache is completely empty or user forced a refresh.
+      // If we already have cached chats, render them instantly and silently update in background.
+      const srcHasCache = src === 'signal'
+        ? (recentSourceChatsByPlatform.signal || []).length > 0
+        : (chatsCacheByPlatform[src] || []).length > 0;
+      const tgtHasCache = tgt === 'fastapi' || (chatsCacheByPlatform[tgt] || []).length > 0;
+      if (force || !srcHasCache) setFlowStatusFor('source', 'loading', platformLoadingMessage(src));
+      if (tgt !== 'fastapi' && (force || !tgtHasCache)) {
         setFlowStatusFor('target', 'loading', platformLoadingMessage(tgt));
+      }
+      // Render cached data immediately so the picker is usable while the refresh runs.
+      if (!force && (srcHasCache || tgtHasCache)) {
+        renderSourcePicker();
+        renderTargetPicker();
       }
       try {
         if (src === 'signal' || tgt === 'signal') {

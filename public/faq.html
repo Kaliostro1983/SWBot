@@ -394,6 +394,58 @@
       </div>
     </div>
 
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        WhatsApp зависає на «connecting» — у логах немає жодних подій після старту.
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p><strong>Симптом.</strong> Після запуску сервісу WhatsApp показує «connecting» / «Підключення…» протягом 5+ хвилин. У логах є рядок <code>Bot initialize requested</code>, але далі — повна тиша. Немає ні <code>Authenticated</code>, ні <code>Client ready</code>, ні жодних помилок.</p>
+
+        <div class="notice danger">
+          <span class="ni">🔴</span>
+          <span><strong>Причина — застаріла або пошкоджена сесія.</strong> Папка <code>.wwebjs_auth/</code> містить дані старої сесії. Chrome запускається, намагається відновити сесію, але WhatsApp Web її відхиляє, не надсилаючи жодних подій назад у бібліотеку. Бот «завис» в очікуванні події, яка ніколи не прийде.</span>
+        </div>
+
+        <p><strong>Як це виправити:</strong></p>
+        <ul class="steps">
+          <li>
+            <span class="n">1</span>
+            <span><strong>Зупиніть сервіс</strong> — закрийте термінал або натисніть <code>Ctrl+C</code>.</span>
+          </li>
+          <li>
+            <span class="n">2</span>
+            <span><strong>Видаліть папку сесії</strong> у корені проєкту:</span>
+          </li>
+        </ul>
+        <div class="code-block">
+          <span class="c"># Windows (PowerShell)</span><br>
+          <span class="cmd">Remove-Item</span> -Recurse -Force .wwebjs_auth, .wwebjs_cache<br><br>
+          <span class="c"># або через Провідник файлів — видаліть папки .wwebjs_auth та .wwebjs_cache</span>
+        </div>
+        <ul class="steps">
+          <li>
+            <span class="n">3</span>
+            <span><strong>Запустіть сервіс знову</strong> — <code>node index.cjs</code>.</span>
+          </li>
+          <li>
+            <span class="n">4</span>
+            <span><strong>Відскануйте QR-код</strong> у панелі → Інтеграція → WhatsApp. Нова чиста сесія буде збережена.</span>
+          </li>
+        </ul>
+
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span><strong>Як розпізнати цю проблему:</strong> у логах є <code>Bot initialize requested</code>, але після нього — тиша більше 2 хвилин. Немає навіть рядка <code>Authenticated</code>. Це відрізняється від звичайного повільного старту, де <code>Authenticated</code> з'являється, але <code>Client ready</code> затримується.</span>
+        </div>
+
+        <div class="notice warn">
+          <span class="ni">⚠️</span>
+          <span>Щоб уникнути повторення — не переміщуйте <code>.wwebjs_auth/</code> між машинами і не відновлюйте із резервних копій. Сесія прив'язана до конкретного пристрою та часу реєстрації.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ Signal ═════════════════════════════════════════════ -->
     <div class="cat-header" id="signal">
       <span class="cat-icon">🔵</span>
@@ -418,6 +470,42 @@
         <ul class="steps">
           <li><span class="n">3</span><span>Зачекайте 10–15 секунд — Signal у панелі покаже <span class="pill pill-green">connected</span>.</span></li>
         </ul>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-q" onclick="toggle(this)">
+        Signal не підключається автоматично після запуску — потрібно чекати 2–3 хвилини?
+        <span class="faq-arrow">▼</span>
+      </button>
+      <div class="faq-body">
+        <p><strong>Так, це нормальна поведінка.</strong> Signal-міст працює через Docker-контейнер <code>signal-cli-api</code>, який побудований на Java (JVM). При першому старті JVM виконує JIT-компіляцію і споживає до <strong>600–650% CPU</strong> протягом 1,5–3 хвилин. Поки цей процес не завершиться — контейнер не відповідає на запити, і бот бачить Signal як «connecting».</p>
+
+        <div class="notice info">
+          <span class="ni">💡</span>
+          <span>Бот <strong>автоматично повторює спроби</strong> підключення кожні 5 секунд. Після того як JVM прогріється — Signal підключиться сам, без будь-яких дій з вашого боку.</span>
+        </div>
+
+        <p><strong>Як прискорити та не повторювати щоразу:</strong></p>
+        <ul class="steps">
+          <li>
+            <span class="n">1</span>
+            <span><strong>Увімкніть автозапуск Docker Desktop при вході у Windows:</strong> Docker Desktop → Settings → General → ✅ <em>Start Docker Desktop when you sign in to your computer</em>.</span>
+          </li>
+          <li>
+            <span class="n">2</span>
+            <span><strong>Контейнери запустяться автоматично</strong> — у <code>docker-compose.signal.yml</code> вже стоїть <code>restart: unless-stopped</code>, тому після перезапуску Windows Docker сам підніме <code>signal-cli-api</code> і <code>signal-bridge</code>.</span>
+          </li>
+          <li>
+            <span class="n">3</span>
+            <span><strong>JVM прогріється до того, як ви відкриєте панель</strong> — якщо комп'ютер стартував кілька хвилин тому, Signal вже буде готовий.</span>
+          </li>
+        </ul>
+
+        <div class="notice ok">
+          <span class="ni">✅</span>
+          <span>Після першого «прогріву» JVM кешує скомпільований код. Якщо контейнер <strong>не зупиняти</strong> (тільки бот перезапускати) — підключення до Signal займає 3–5 секунд.</span>
+        </div>
       </div>
     </div>
 
