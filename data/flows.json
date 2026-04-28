@@ -1,25 +1,31 @@
 [
   {
-    "id": "flow_1774594788701_k21fqjy7",
-    "name": "Перехоплення 63 - Тест",
-    "direction": "wa_fastapi",
-    "sourcePlatform": "whatsapp",
-    "targetPlatform": "fastapi",
-    "sourceChatKey": null,
+    "id": "flow_1776289530890_ogp2u6ih",
+    "name": "Галявина - Частоти РЕР",
+    "direction": "signal_whatsapp",
+    "sourcePlatform": "signal",
+    "targetPlatform": "whatsapp",
+    "sourceChatKey": "signal:chat:659",
     "sourceChatIds": [
-      "120363194806689869@g.us"
+      "group.cTYySllrWFYyQ1l2Q0pKL3UzRWhxYm03Tml3aXlkbkl3ZWFzWE9DcTBFUT0="
     ],
     "sourceChatRefs": [
       {
-        "id": "120363194806689869@g.us",
-        "name": "Перехоплення_63",
-        "aliases": []
+        "id": "group.cTYySllrWFYyQ1l2Q0pKL3UzRWhxYm03Tml3aXlkbkl3ZWFzWE9DcTBFUT0=",
+        "name": "Галявина",
+        "aliases": [
+          "group.cTYySllrWFYyQ1l2Q0pKL3UzRWhxYm03Tml3aXlkbkl3ZWFzWE9DcTBFUT0=",
+          "cTYySllrWFYyQ1l2Q0pKL3UzRWhxYm03Tml3aXlkbkl3ZWFzWE9DcTBFUT0="
+        ]
       }
     ],
-    "sourceChatId": "120363194806689869@g.us",
+    "sourceChatId": "group.cTYySllrWFYyQ1l2Q0pKL3UzRWhxYm03Tml3aXlkbkl3ZWFzWE9DcTBFUT0=",
     "fastapiUrl": null,
-    "targetChatId": null,
-    "targetChatRef": null,
+    "targetChatId": "120363194806689869@g.us",
+    "targetChatRef": {
+      "id": "120363194806689869@g.us",
+      "name": "Перехоплення_63"
+    },
     "paused": false,
     "keywords": "*",
     "frequencies": "",
