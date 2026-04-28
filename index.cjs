@@ -43,6 +43,7 @@ const CHROME_EXECUTABLE_PATH = String(process.env.CHROME_EXECUTABLE_PATH || '').
 const WA_LAUNCH_TIMEOUT_MS = Math.max(30000, Number(process.env.WA_LAUNCH_TIMEOUT_MS || 120000));
 const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TIMEOUT_MS || 180000));
 const SIGNAL_RAW_CAPTURE = String(process.env.SIGNAL_RAW_CAPTURE || '0').trim() === '1';
+const DEBUG_ROUTING = String(process.env.DEBUG_ROUTING || '0').trim() === '1';
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -336,78 +337,27 @@ function flowMatchesMessage(flow, message) {
 
   if (flowSourceChatKey) {
     if (incomingChatKey && incomingChatKey === flowSourceChatKey) {
-      console.log('[ROUTING]', {
-        platform,
-        incomingChatKey,
-        expectedSourceChatKey: flowSourceChatKey,
-        flowId,
-        flowName,
-        result: 'matched'
-      });
-      return {
-        matched: true,
-        matchedBy: flowSourceChatKey
-      };
+      if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: flowSourceChatKey, flowId, flowName, result: 'matched' });
+      return { matched: true, matchedBy: flowSourceChatKey };
     }
-
-    console.log('[ROUTING]', {
-      platform,
-      incomingChatKey,
-      expectedSourceChatKey: flowSourceChatKey,
-      flowId,
-      flowName,
-      result: 'skipped'
-    });
-    return {
-      matched: false,
-      matchedBy: null
-    };
+    if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: flowSourceChatKey, flowId, flowName, result: 'skipped' });
+    return { matched: false, matchedBy: null };
   }
 
   if (flowAliases.size === 0) {
-    console.warn('[ROUTING]', {
-      platform,
-      incomingChatKey,
-      expectedSourceChatKey: null,
-      flowId,
-      flowName,
-      result: 'skipped'
-    });
-    return {
-      matched: false,
-      matchedBy: null
-    };
+    if (DEBUG_ROUTING) console.warn('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: null, flowId, flowName, result: 'skipped' });
+    return { matched: false, matchedBy: null };
   }
 
   for (const alias of flowAliases) {
     if (messageCandidates.has(alias)) {
-      console.log('[ROUTING]', {
-        platform,
-        incomingChatKey,
-        expectedSourceChatKey: null,
-        flowId,
-        flowName,
-        result: 'matched'
-      });
-      return {
-        matched: true,
-        matchedBy: alias
-      };
+      if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: null, flowId, flowName, result: 'matched' });
+      return { matched: true, matchedBy: alias };
     }
   }
 
-  console.log('[ROUTING]', {
-    platform,
-    incomingChatKey,
-    expectedSourceChatKey: null,
-    flowId,
-    flowName,
-    result: 'skipped'
-  });
-  return {
-    matched: false,
-    matchedBy: null
-  };
+  if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: null, flowId, flowName, result: 'skipped' });
+  return { matched: false, matchedBy: null };
 }
 
 function noteSignalIncomingChat(chatId, rawText = '') {
@@ -559,19 +509,14 @@ function autoRemapSignalFlowsFromDirectory(force = false) {
 }
 
 function findSignalFlowsByIncomingCandidates(message) {
-  console.log('[ROUTER CHECK]', {
-    text: message.text,
-    chatId: message.chatId,
-    platform: message.platform,
-    flowsCount: flows.length
-  });
+  if (DEBUG_ROUTING) console.log('[ROUTER CHECK]', { text: message.text, chatId: message.chatId, platform: message.platform, flowsCount: flows.length });
   const matched = flows.filter((f) => {
     const p = inferPlatforms(f);
     if (p.sourcePlatform !== 'signal') return false;
     if (f.debugCatchAllSignal === true) return false;
     // Primary rule for Signal routing: sourceChatKey is required.
     if (!String(f?.sourceChatKey || '').trim()) {
-      console.warn('[ROUTING]', {
+      if (DEBUG_ROUTING) console.warn('[ROUTING]', {
         platform: 'signal',
         incomingChatKey: chatDirectoryStore.findChatByMessage(message)?.chatKey || null,
         expectedSourceChatKey: null,
@@ -588,13 +533,7 @@ function findSignalFlowsByIncomingCandidates(message) {
     (f) => f.id === 'debug_signal' && f.debugCatchAllSignal === true && !f.paused
   );
   if (debugFallback) {
-    console.log('[ROUTER CHECK]', {
-      text: message.text,
-      chatId: message.chatId,
-      platform: message.platform,
-      flowsCount: flows.length,
-      matchedFallback: 'debug_signal'
-    });
+    if (DEBUG_ROUTING) console.log('[ROUTER CHECK]', { text: message.text, chatId: message.chatId, platform: message.platform, flowsCount: flows.length, matchedFallback: 'debug_signal' });
     return [debugFallback];
   }
   return [];
@@ -2586,7 +2525,16 @@ async function processSignalIncomingMessage(message) {
   if (p.targetPlatform === 'whatsapp') {
     const target = String(flow.targetChatId || '').trim();
     if (!target) return;
-    if (!rawText) return;
+    if (!rawText) {
+      const hasAny = Array.isArray(message.attachments) && message.attachments.length > 0;
+      pushLog('WARN', 'Signal→WA: повідомлення без тексту — нічого не пересилається', {
+        flowId: flow.id,
+        flowName: flow.name,
+        hasAttachments: hasAny,
+        tip: hasAny ? 'Увімкніть "Пересилати зображення" в налаштуваннях автоматизації' : 'Повідомлення не містить тексту'
+      });
+      return;
+    }
     if (!client || !state.ready) {
       pushLog('ERROR', 'Signal→WA: клієнт WhatsApp не готовий', { flowId: flow.id });
       return;
