@@ -19,10 +19,12 @@ if "%MSG%"=="" (
   exit /b 1
 )
 
-git add index.cjs public\index.html signal-bridge\server.cjs
+git add --ignore-errors index.cjs public\index.html signal-bridge\server.cjs
 git add --ignore-errors install.bat update.bat setup_docker.bat commit.bat
-git add --ignore-errors docker-compose.signal.yml docker-compose.yml
+git add --ignore-errors docker-compose.signal.yml
 git add --ignore-errors public\deploy.html public\faq.html
+git add --ignore-errors src\chat-directory\chatDirectory.js src\normalization\chatIdentity.js
+git add --ignore-errors .gitignore
 
 echo.
 echo === Staged files ===

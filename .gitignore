@@ -13,6 +13,14 @@ node_modules/
 # Logs and generated state
 logs/
 *.log
+logs_tmp.json
+
+# Runtime caches (auto-refreshed, no need to version)
+data/signal-chats-cache.json
+data/whatsapp-chats-cache.json
+
+# Claude Code internal files
+.claude/
 
 # OS
 .DS_Store
