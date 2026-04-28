@@ -22,6 +22,9 @@ data/whatsapp-chats-cache.json
 # Claude Code internal files
 .claude/
 
+# Accidental zero-byte artifact
+/docker
+
 # OS
 .DS_Store
 Thumbs.db
