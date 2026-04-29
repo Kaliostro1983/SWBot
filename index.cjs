@@ -252,6 +252,25 @@ function upsertChatDirectory(platform, chats) {
     if (isSignal && isSignalGroup) {
       // For groups, include base-id candidate too (for incoming messages that may omit prefix).
       candidates.push(id.slice(6));
+      // Backward compat: if signal-bridge now returns the correct single-encoded group ID
+      // (after the double-encoding fix), we also add the base64-re-encoded form as a lookup
+      // candidate.  This ensures the existing directory entry — which was created with the
+      // double-encoded alias — can be found and updated with the new canonical alias.
+      // We use rawId (original case, before normalization) to reproduce the exact bytes that
+      // were used when the directory entry was first created.
+      try {
+        const rawGroupBase = rawId.startsWith('group.') ? rawId.slice(6) : rawId;
+        if (rawGroupBase) {
+          const doubleEncoded = `group.${Buffer.from(rawGroupBase).toString('base64')}`;
+          const doubleEncodedNorm = String(normalizeChatId(doubleEncoded) || '').trim();
+          if (doubleEncodedNorm && !candidates.includes(doubleEncodedNorm)) {
+            candidates.push(doubleEncodedNorm);
+            candidates.push(doubleEncodedNorm.slice(6)); // without group. prefix
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
     }
     const found = chatDirectoryStore.findChatByMessage({
       platform,

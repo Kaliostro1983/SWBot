@@ -23,6 +23,35 @@ function baseUrl() {
   return SIGNAL_CLI_BASE_URL.replace(/\/+$/, '');
 }
 
+/**
+ * signal-cli-api /v1/groups returns group IDs that are themselves base64-encoded:
+ * the raw binary group ID is base64-encoded to get the "canonical" form used in
+ * /v1/receive messages, but /v1/groups wraps that string in a second layer of base64.
+ *
+ * This function attempts to decode one layer.  Returns the decoded string when the
+ * result is a valid base64 value (i.e. still within the base64 alphabet and looks
+ * like the single-encoded canonical ID), or null if the input is already
+ * single-encoded (decoding would produce binary bytes, not a base64 string).
+ */
+function tryDecodeBase64Id(id) {
+  if (!id || typeof id !== 'string') return null;
+  try {
+    const decoded = Buffer.from(id, 'base64').toString('utf8');
+    if (
+      decoded &&
+      decoded !== id &&
+      decoded.length >= 4 &&
+      decoded.length <= 256 &&
+      /^[A-Za-z0-9+/]+=*$/.test(decoded)
+    ) {
+      return decoded;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return null;
+}
+
 function normalizeChatItem(id, name) {
   const chatId = String(id || '').trim();
   if (!chatId) return null;
@@ -228,6 +257,10 @@ app.get('/chats', async (_req, res) => {
         // signal-cli-api may already include a 'group.' prefix — strip it so we
         // always store IDs as "group.<rawId>", matching the format used in /messages.
         while (gid.toLowerCase().startsWith('group.')) gid = gid.slice(6).trim();
+        // signal-cli-api /v1/groups returns IDs double-encoded (base64 of base64).
+        // Decode once to get the canonical single-encoded form that /v1/receive uses.
+        const decodedGid = tryDecodeBase64Id(gid);
+        if (decodedGid) gid = decodedGid;
         const prefixedId = gid ? `group.${gid}` : '';
         const item = normalizeChatItem(prefixedId, g?.name || gid);
         if (item) chats.push(item);
