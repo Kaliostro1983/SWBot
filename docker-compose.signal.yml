@@ -28,8 +28,8 @@ services:
     environment:
       - PORT=3002
       - SIGNAL_CLI_BASE_URL=http://signal-cli-api:8080
-      # Той самий номер, який зареєстрований у signal-cli-rest-api
-      - SIGNAL_ACCOUNT_NUMBER=+380632445475
+      # Номер Signal-акаунта — беремо з .env (SIGNAL_ACCOUNT_NUMBER=+380XXXXXXXXX)
+      - SIGNAL_ACCOUNT_NUMBER=${SIGNAL_ACCOUNT_NUMBER:-}
       - SIGNAL_RECEIVE_TIMEOUT_SEC=1
     depends_on:
       - signal-cli-api
