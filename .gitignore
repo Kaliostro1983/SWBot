@@ -20,6 +20,11 @@ data/signal-chats-cache.json
 data/whatsapp-chats-cache.json
 data/chat-directory.json
 
+# Per-machine data: flows are account-specific (chat IDs differ per machine)
+data/flows.json
+# Panel credentials (each machine sets its own password)
+data/panel-auth.json
+
 # Claude Code internal files
 .claude/
 
