@@ -1870,7 +1870,12 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const res = await fetch('/api/signal/start', { method: 'POST', credentials: 'same-origin' });
       if (res.status === 401) { window.location.href = '/login.html'; return; }
       const data = await res.json().catch(() => ({}));
-      if (data.ok === false) showToast(data.message || 'Не вдалося запустити Signal', 'error');
+      if (data.ok === false) { showToast(data.message || 'Не вдалося запустити Signal', 'error'); return; }
+      // Give the worker ~1.5 s to detect an already-linked account (simple restart case).
+      // If linked is confirmed in time we skip QR. Otherwise we open the QR flow.
+      await new Promise(r => setTimeout(r, 1500));
+      if (lastStateSnapshot?.signal?.linked === true) return;
+      await signalLoginQr();
     }
 
     async function signalDisconnect() {
