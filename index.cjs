@@ -2624,13 +2624,18 @@ async function processSignalIncomingMessage(message) {
   if (p.targetPlatform === 'whatsapp') {
     const target = String(flow.targetChatId || '').trim();
     if (!target) return;
-    if (!rawText) {
-      const hasAny = Array.isArray(message.attachments) && message.attachments.length > 0;
+
+    const hasAttachments = Array.isArray(message.attachments) && message.attachments.length > 0;
+    const canSendAttachments = flow.sendAttachments && hasAttachments;
+
+    if (!rawText && !canSendAttachments) {
       pushLog('WARN', 'Signal→WA: повідомлення без тексту — нічого не пересилається', {
         flowId: flow.id,
         flowName: flow.name,
-        hasAttachments: hasAny,
-        tip: hasAny ? 'Увімкніть "Пересилати зображення" в налаштуваннях автоматизації' : 'Повідомлення не містить тексту'
+        hasAttachments,
+        tip: hasAttachments
+          ? 'Увімкніть "Пересилати зображення" в налаштуваннях автоматизації'
+          : 'Повідомлення не містить тексту'
       });
       return;
     }
@@ -2639,8 +2644,39 @@ async function processSignalIncomingMessage(message) {
       return;
     }
     try {
-      await sendWithRateLimit(target, rawText);
-      pushLog('INFO', 'Signal→WA sent', { flowId: flow.id, targetChat: target, result: 'sent' });
+      if (canSendAttachments) {
+        // Download Signal attachments and send to WA; first attachment gets text as caption
+        let captionUsed = false;
+        for (const att of message.attachments) {
+          if (!att.id) continue;
+          try {
+            const dl = await downloadSignalAttachment(att.id);
+            if (dl?.ok && dl.base64) {
+              const mime = String(dl.contentType || att.contentType || 'application/octet-stream').trim();
+              const filename = String(att.filename || '').trim() || undefined;
+              const caption = !captionUsed ? rawText : undefined;
+              await sendMediaWithRateLimit(target, mime, dl.base64, filename, caption);
+              captionUsed = true;
+            }
+          } catch (e) {
+            pushLog('WARN', 'Signal→WA: не вдалося завантажити вкладення', {
+              attachmentId: att.id,
+              error: e.message || String(e)
+            });
+          }
+        }
+        // If all attachment downloads failed but there is text — send text only
+        if (!captionUsed && rawText) {
+          await sendWithRateLimit(target, rawText);
+        }
+      } else {
+        await sendWithRateLimit(target, rawText);
+      }
+      pushLog('INFO', 'Signal→WA sent', {
+        flowId: flow.id,
+        targetChat: target,
+        attachmentsCount: canSendAttachments ? message.attachments.length : 0
+      });
     } catch (err) {
       if (isWaTransientDetachedFrameError(err)) {
         pushLog('ERROR', 'Signal→WA failed: detached frame, restarting WA', {
