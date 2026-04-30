@@ -271,6 +271,38 @@ function upsertChatDirectory(platform, chats) {
       } catch (_) {
         // ignore
       }
+
+      // ── Name-based fallback ──────────────────────────────────────────────────
+      // When signal-bridge returns a group under a human-readable name but with
+      // a new / different group ID, the ID-only candidates above won't find the
+      // existing real directory entry → a ghost entry gets created.
+      //
+      // Algorithm: look for an entry that
+      //   1. Has the same display/manual label as the incoming chat name, AND
+      //   2. Has real message history (lastSeenAt is set — not a ghost itself).
+      //
+      // If such an entry is found, we inject ALL its aliases into `candidates`
+      // so that `findChatByMessage` matches the real entry and
+      // `upsertChatFromMessage` merges the new group ID into it rather than
+      // creating a duplicate.
+      if (name && !looksTechnicalChatName(id, name)) {
+        const nameLower = name.toLowerCase();
+        const allSignalEntries = chatDirectoryStore.listAllChatsSortedByLastSeen('signal', 10000);
+        const realEntryByName = allSignalEntries.find((e) => {
+          // Skip ghost entries (no real messages observed yet).
+          if (!String(e?.lastSeenAt || '').trim()) return false;
+          const manual = String(e?.manualLabel || '').trim().toLowerCase();
+          const display = String(e?.displayName || '').trim().toLowerCase();
+          return manual === nameLower || display === nameLower;
+        });
+        if (realEntryByName && Array.isArray(realEntryByName.aliases)) {
+          for (const alias of realEntryByName.aliases) {
+            const a = String(alias || '').trim();
+            if (a && !candidates.includes(a)) candidates.push(a);
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────────────
     }
     const found = chatDirectoryStore.findChatByMessage({
       platform,
@@ -787,7 +819,24 @@ function migrateFlowRecord(f) {
 
 function resolveSignalSourceChatKeyFromFlowAliases(flow) {
   if (String(flow?.sourcePlatform) !== 'signal') return null;
-  if (String(flow?.sourceChatKey || '').trim()) return String(flow.sourceChatKey).trim();
+
+  // ── Validate existing sourceChatKey ─────────────────────────────────────────
+  // If the flow already has a sourceChatKey, only trust it when the corresponding
+  // directory entry has real message history (lastSeenAt set).  Ghost entries
+  // created by upsertChatDirectory from the /chats API have no lastSeenAt and
+  // point to the wrong group ID.  In that case we fall through to alias-based
+  // resolution so the correct (message-matched) entry is found automatically.
+  const existingKey = String(flow?.sourceChatKey || '').trim();
+  if (existingKey) {
+    const existingEntry = chatDirectoryStore.getChatByKey(existingKey);
+    if (existingEntry && String(existingEntry?.lastSeenAt || '').trim()) {
+      // Real entry with message history — trust it.
+      return existingKey;
+    }
+    // Ghost / missing entry — fall through to alias-based resolution below.
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   const set = getFlowSignalSourceAliases(flow);
   if (set.size === 0) return null;
   const entries = chatDirectoryStore.listRecentChats('signal', 5000);
