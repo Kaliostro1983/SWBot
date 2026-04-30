@@ -598,11 +598,11 @@ function findChatByMessage(message) {
   const directory = loadChatDirectory();
   const platform = String(message?.platform || 'signal').trim() || 'signal';
   const candidates = buildChatCandidates(message);
+  const chatId = String(message?.chatId || '').trim();
   const subset = directory.filter((e) => String(e.platform) === platform);
 
-  // For group messages, prioritize group-type candidates so the group entry wins
-  // over the sender's direct contact entry (which may appear earlier in the directory).
-  const chatId = String(message?.chatId || '').trim();
+  // For group messages (chatId starts with "group."), prioritize group-type candidates
+  // so the group entry wins over the sender's direct-contact entry.
   if (chatId.startsWith('group.')) {
     const groupCandidates = candidates.filter(
       (c) => c.startsWith('group.') || c.startsWith('signal-group:')
@@ -611,6 +611,18 @@ function findChatByMessage(message) {
       const groupMatch = findChatByCandidates(subset, groupCandidates);
       if (groupMatch) return groupMatch;
     }
+  }
+
+  // For Signal direct messages whose chatId is a phone number, never match against
+  // chatType:'group' directory entries.  Group entries sometimes accumulate phone
+  // aliases of group members (via past merges or signal-bridge quirks).  Without
+  // this guard a private message from a group member would be mis-routed as if it
+  // came from the group itself.
+  const isPhoneChatId =
+    platform === 'signal' && (chatId.startsWith('+') || chatId.startsWith('phone:'));
+  if (isPhoneChatId) {
+    const directSubset = subset.filter((e) => String(e.chatType || '') !== 'group');
+    return findChatByCandidates(directSubset, candidates);
   }
 
   return findChatByCandidates(subset, candidates);
