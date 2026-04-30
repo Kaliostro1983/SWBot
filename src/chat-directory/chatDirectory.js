@@ -183,7 +183,19 @@ function mergeDuplicateChatsInDirectory(directory) {
   for (const idxs of aliasToIdx.values()) {
     if (!idxs || idxs.length < 2) continue;
     const base = idxs[0];
-    for (let j = 1; j < idxs.length; j += 1) union(base, idxs[j]);
+    for (let j = 1; j < idxs.length; j += 1) {
+      // Never merge a chatType:group entry with a chatType:direct entry.
+      // A shared UUID alias between a group and a direct contact is alias
+      // pollution — merging would cause personal messages to be mis-routed
+      // as group messages (and vice-versa).
+      const typeA = String(arr[find(base)]?.chatType || '').trim();
+      const typeB = String(arr[find(idxs[j])]?.chatType || '').trim();
+      if (
+        (typeA === 'group' && typeB === 'direct') ||
+        (typeA === 'direct' && typeB === 'group')
+      ) continue;
+      union(base, idxs[j]);
+    }
   }
 
   // Group by root
@@ -613,16 +625,25 @@ function findChatByMessage(message) {
     }
   }
 
-  // For Signal direct messages whose chatId is a phone number, never match against
-  // chatType:'group' directory entries.  Group entries sometimes accumulate phone
-  // aliases of group members (via past merges or signal-bridge quirks).  Without
-  // this guard a private message from a group member would be mis-routed as if it
-  // came from the group itself.
-  const isPhoneChatId =
-    platform === 'signal' && (chatId.startsWith('+') || chatId.startsWith('phone:'));
-  if (isPhoneChatId) {
-    const directSubset = subset.filter((e) => String(e.chatType || '') !== 'group');
-    return findChatByCandidates(directSubset, candidates);
+  // For Signal direct messages, never match against chatType:'group' entries.
+  // Group entries sometimes accumulate phone numbers and UUIDs of group members
+  // via past directory merges.  Without this guard a private message from a
+  // group member would be mis-routed as if it came from the group itself.
+  //
+  // Two cases are handled:
+  //  • Phone chatId  (+380...): always a personal/direct message.
+  //  • UUID chatId   (xxxxxxxx-xxxx-...): signal-bridge always normalises real
+  //    group IDs to "group.XXX"; a bare UUID chatId means a direct message.
+  if (platform === 'signal') {
+    const isPhoneChatId = chatId.startsWith('+') || chatId.startsWith('phone:');
+    const isUuidChatId =
+      !isPhoneChatId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chatId);
+
+    if (isPhoneChatId || isUuidChatId) {
+      const directSubset = subset.filter((e) => String(e.chatType || '') !== 'group');
+      return findChatByCandidates(directSubset, candidates);
+    }
   }
 
   return findChatByCandidates(subset, candidates);

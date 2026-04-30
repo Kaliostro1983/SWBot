@@ -448,6 +448,21 @@ function flowMatchesMessage(flow, message) {
 
   if (flowSourceChatKey) {
     if (incomingChatKey && incomingChatKey === flowSourceChatKey) {
+      // ── Group-flow guard ───────────────────────────────────────────────────
+      // Signal group messages are ALWAYS normalized to "group.XXX" chatId by
+      // signal-bridge.  If the flow targets a group-type directory entry but
+      // the incoming chatId is NOT a group ID (phone number, bare UUID, etc.),
+      // block the match — the chatId belongs to a personal contact whose
+      // identifier leaked into the group's alias list via past directory merges.
+      if (platform === 'signal') {
+        const incomingChatId = String(message?.chatId || '').trim();
+        const flowEntry = chatDirectoryStore.getChatByKey(flowSourceChatKey);
+        if (String(flowEntry?.chatType || '') === 'group' && !incomingChatId.startsWith('group.')) {
+          if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: flowSourceChatKey, flowId, flowName, incomingChatId, result: 'blocked-non-group-chatid' });
+          return { matched: false, matchedBy: null };
+        }
+      }
+      // ──────────────────────────────────────────────────────────────────────
       if (DEBUG_ROUTING) console.log('[ROUTING]', { platform, incomingChatKey, expectedSourceChatKey: flowSourceChatKey, flowId, flowName, result: 'matched' });
       return { matched: true, matchedBy: flowSourceChatKey };
     }
@@ -4237,6 +4252,32 @@ app.get('/api/chat-directory/resolve-source', (req, res) => {
       : null
   });
 });
+
+// ── Admin: remove alias pollution from a group chat directory entry ────────
+// POST /api/admin/chat-directory/:key/clean-group-aliases
+// Strips every alias that is NOT a group. or signal-group: prefixed ID.
+// Use this to clean up entries that accumulated phone numbers / UUIDs of group
+// members, which causes personal messages to be mis-routed as group messages.
+app.post('/api/admin/chat-directory/:key/clean-group-aliases', (req, res) => {
+  const key = String(req.params.key || '').trim();
+  if (!key) return res.status(400).json({ ok: false, message: 'chatKey required' });
+  const entry = chatDirectoryStore.getChatByKey(key);
+  if (!entry) return res.status(404).json({ ok: false, message: 'Chat entry not found' });
+  if (String(entry.chatType || '') !== 'group') {
+    return res.status(400).json({ ok: false, message: `Entry ${key} is chatType:${entry.chatType || 'unknown'}, not group` });
+  }
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+  const toRemove = aliases.filter((a) => {
+    const s = String(a || '').trim().toLowerCase();
+    return !s.startsWith('group.') && !s.startsWith('signal-group:');
+  });
+  if (toRemove.length === 0) {
+    return res.json({ ok: true, removed: [], total: aliases.length, message: 'Already clean — no non-group aliases found' });
+  }
+  chatDirectoryStore.removeAliasesFromChat(key, toRemove);
+  return res.json({ ok: true, removed: toRemove, remaining: aliases.length - toRemove.length, message: `Removed ${toRemove.length} non-group alias(es)` });
+});
+// ───────────────────────────────────────────────────────────────────────────
 
 app.get('/api/flows', (req, res) => {
   res.json({ ok: true, flows });
