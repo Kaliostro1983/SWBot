@@ -180,7 +180,7 @@ function mergeDuplicateChatsInDirectory(directory) {
     if (ra !== rb) parent[rb] = ra;
   };
 
-  for (const idxs of aliasToIdx.values()) {
+  for (const [sharedAlias, idxs] of aliasToIdx.entries()) {
     if (!idxs || idxs.length < 2) continue;
     const base = idxs[0];
     for (let j = 1; j < idxs.length; j += 1) {
@@ -194,6 +194,17 @@ function mergeDuplicateChatsInDirectory(directory) {
         (typeA === 'group' && typeB === 'direct') ||
         (typeA === 'direct' && typeB === 'group')
       ) continue;
+      // Never merge two Signal group entries via a non-group-format alias.
+      // Phone numbers and bare UUIDs in group alias lists are member-contact
+      // pollution — two different groups may share a common member phone,
+      // which must NOT cause them to be merged into one directory entry.
+      // Only a proper group-format alias (group.<base64> or signal-group:...)
+      // proves the two entries represent the same Signal group.
+      if (typeA === 'group' && typeB === 'group') {
+        const isGroupFormatAlias =
+          sharedAlias.startsWith('group.') || sharedAlias.startsWith('signal-group:');
+        if (!isGroupFormatAlias) continue;
+      }
       union(base, idxs[j]);
     }
   }
