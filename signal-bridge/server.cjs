@@ -124,7 +124,10 @@ function normalizeIncomingMessages(raw) {
         addCandidate(g);              // raw group id
         addCandidate(`group.${g}`);  // canonical group id used across the app
       }
-      if (source) addCandidate(String(source).trim());
+      // For group messages, "source" is the sender, not the chat.
+      // Adding sender UUID/phone as a chat candidate for groups causes
+      // unrelated group entries to merge via shared participants.
+      if (source && !groupId) addCandidate(String(source).trim());
 
       const text = String(dataMsg?.message || m?.message || m?.text || '').trim();
       const id = String(env.timestamp || m?.timestamp || Date.now());

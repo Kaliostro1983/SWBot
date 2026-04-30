@@ -70,8 +70,13 @@ function buildChatCandidates(message) {
     }
   }
 
-  // Signal-specific: sender іноді є chatId
-  if (message.senderId) {
+  // Signal-specific: for direct messages the sender IS the chatId.
+  // For group messages (chatId starts with "group.") the sender is a participant,
+  // not the chat itself — including them here merges unrelated groups that share
+  // a common participant.
+  const chatIdStr = String(message.chatId || '').trim();
+  const isGroupChat = chatIdStr.startsWith('group.');
+  if (message.senderId && !isGroupChat) {
     addCandidatePair(message.senderId);
   }
   addAliasesFor(message.chatId);
