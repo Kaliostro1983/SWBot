@@ -4279,6 +4279,40 @@ app.post('/api/admin/chat-directory/:key/clean-group-aliases', (req, res) => {
 });
 // ───────────────────────────────────────────────────────────────────────────
 
+// POST /api/admin/chat-directory/:key/remove-aliases
+// Body: { aliases: ["alias1", "alias2", ...] }
+// Removes specific aliases from any chatKey (group or direct).
+app.post('/api/admin/chat-directory/:key/remove-aliases', (req, res) => {
+  const key = String(req.params.key || '').trim();
+  if (!key) return res.status(400).json({ ok: false, message: 'chatKey required' });
+  const entry = chatDirectoryStore.getChatByKey(key);
+  if (!entry) return res.status(404).json({ ok: false, message: 'Chat entry not found' });
+  const toRemove = Array.isArray(req.body?.aliases)
+    ? req.body.aliases.map((a) => String(a || '').trim()).filter(Boolean)
+    : [];
+  if (toRemove.length === 0) return res.status(400).json({ ok: false, message: 'aliases array required in body' });
+  chatDirectoryStore.removeAliasesFromChat(key, toRemove);
+  const updated = chatDirectoryStore.getChatByKey(key);
+  return res.json({ ok: true, removed: toRemove, remaining: (updated?.aliases || []).length });
+});
+
+// POST /api/admin/chat-directory/:key/set-label
+// Body: { label: "New Name" }
+// Force-sets manualLabel on a chatKey (bypasses the "empty-only" restriction).
+app.post('/api/admin/chat-directory/:key/set-label', (req, res) => {
+  const key = String(req.params.key || '').trim();
+  const label = String(req.body?.label || '').trim();
+  if (!key) return res.status(400).json({ ok: false, message: 'chatKey required' });
+  if (!label) return res.status(400).json({ ok: false, message: 'label required in body' });
+  const directory = chatDirectoryStore.loadChatDirectory();
+  const entry = directory.find((e) => String(e.chatKey) === key);
+  if (!entry) return res.status(404).json({ ok: false, message: 'Chat entry not found' });
+  entry.manualLabel = label;
+  chatDirectoryStore.saveChatDirectory(directory);
+  return res.json({ ok: true, chatKey: key, manualLabel: label });
+});
+// ───────────────────────────────────────────────────────────────────────────
+
 app.get('/api/flows', (req, res) => {
   res.json({ ok: true, flows });
 });
