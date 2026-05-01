@@ -1484,7 +1484,12 @@ function pushLog(level, message, meta = null) {
   }
 
   const printable = `[${line.ts}] [${level}] ${message}${meta ? ' ' + JSON.stringify(meta) : ''}\n`;
-  fs.appendFileSync(LOG_FILE, printable, 'utf8');
+  try {
+    truncateFileIfTooLarge(LOG_FILE, LOG_MAX_BYTES);
+    fs.appendFileSync(LOG_FILE, printable, 'utf8');
+  } catch {
+    // Disk full — log file write is non-critical, never crash the process.
+  }
 
   if (level === 'ERROR') {
     state.lastErrorAt = line.ts;
@@ -1888,6 +1893,7 @@ function captureSignalRawEvent(rawEvent) {
       raw: normalized?.raw || rawEvent || {}
     };
     const line = JSON.stringify(row) + '\n';
+    truncateFileIfTooLarge(SIGNAL_RAW_LOG_FILE, SIGNAL_RAW_MAX_BYTES);
     fs.appendFile(SIGNAL_RAW_LOG_FILE, line, 'utf8', (err) => {
       if (!err) return;
       pushLogThrottled(
@@ -2306,19 +2312,42 @@ async function requestSignalLinkQr(deviceName, options = {}) {
   return { ok: true, uri, qrDataUrl };
 }
 
+// Maximum log file sizes before auto-truncation (prevents ENOSPC crashes).
+const LOG_MAX_BYTES = 20 * 1024 * 1024;        // 20 MB — bot.log
+const SIGNAL_RAW_MAX_BYTES = 50 * 1024 * 1024; // 50 MB — signal_raw.ndjson
+
+function truncateFileIfTooLarge(filePath, maxBytes) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size > maxBytes) {
+      fs.writeFileSync(
+        filePath,
+        `[auto-truncated at ${new Date().toISOString()} — file exceeded ${Math.round(maxBytes / 1024 / 1024)} MB]\n`,
+        'utf8'
+      );
+    }
+  } catch {
+    // File might not exist yet — that's fine.
+  }
+}
+
 function writeHealth() {
-  fs.writeFileSync(
-    HEALTH_FILE,
-    JSON.stringify(
-      {
-        ...getPublicState(),
-        logsTail: state.logs.slice(-30)
-      },
-      null,
-      2
-    ),
-    'utf8'
-  );
+  try {
+    fs.writeFileSync(
+      HEALTH_FILE,
+      JSON.stringify(
+        {
+          ...getPublicState(),
+          logsTail: state.logs.slice(-30)
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+  } catch {
+    // Disk full or other I/O error — health file is non-critical, never crash the process.
+  }
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────────────
