@@ -595,8 +595,8 @@
     }
     /* ─── Monitor log lines ──────────────────────────────── */
     .log-line { display: block; padding: 0; white-space: pre-wrap; word-break: break-word; }
-    .log-activity-recv { color: #4ADE80; }
-    .log-activity-send { color: #67E8F9; }
+    .log-activity-signal   { color: #67E8F9; }
+    .log-activity-whatsapp { color: #4ADE80; }
     .log-activity-warn { color: #FB923C; }
     .log-activity-idle { color: #4B5563; }
     .log-error  { color: #F87171; }
@@ -1238,15 +1238,17 @@ docker compose -f docker-compose.signal.yml up -d</div>
       // In simplified mode, hide verbose INFO (those with meta payloads)
       if (!logsVerbose && level === 'INFO') return;
 
-      const ts = String(item.ts || '').slice(11, 19); // HH:MM:SS
+      const raw = String(item.ts || '');
+      let ts = raw.slice(11, 19);
+      if (raw) { const d = new Date(raw); if (!isNaN(d)) ts = new Date(d.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(11, 19); }
       const msg = String(item.message || '');
       const meta = logsVerbose && item.meta ? ' ' + JSON.stringify(item.meta) : '';
 
       let cls = 'log-info';
       if (level === 'ACTIVITY') {
-        if (msg.startsWith('↓')) cls = 'log-activity-recv';
-        else if (msg.startsWith('↑')) cls = 'log-activity-send';
-        else if (msg.startsWith('⚠')) cls = 'log-activity-warn';
+        if (msg.startsWith('⚠')) cls = 'log-activity-warn';
+        else if (msg.includes('Signal')) cls = 'log-activity-signal';
+        else if (msg.includes('WhatsApp')) cls = 'log-activity-whatsapp';
         else cls = 'log-activity-idle';
       } else if (level === 'ERROR') {
         cls = 'log-error';
