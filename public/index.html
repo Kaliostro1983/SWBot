@@ -1171,6 +1171,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
                 <select id="addonDelayChatSelect" style="flex:1;">
                   <option value="">— оберіть чат —</option>
                 </select>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="refreshAddonChatSelect('delay',undefined,true)">Оновити</button>
               </div>
             </div>
           </div>
@@ -1216,6 +1217,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
                 <select id="addonMissingChatSelect" style="flex:1;">
                   <option value="">— оберіть чат —</option>
                 </select>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="refreshAddonChatSelect('missing',undefined,true)">Оновити</button>
               </div>
             </div>
           </div>
@@ -2877,15 +2879,15 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (el) el.style.display = enabled ? '' : 'none';
     }
 
-    async function refreshAddonChatSelect(type, preselectId) {
+    async function refreshAddonChatSelect(type, preselectId, force = false) {
       const platformId = type === 'delay' ? 'addonDelayPlatform' : 'addonMissingPlatform';
       const selectId   = type === 'delay' ? 'addonDelayChatSelect' : 'addonMissingChatSelect';
       const platform = document.getElementById(platformId)?.value || 'whatsapp';
       const sel = document.getElementById(selectId);
       if (!sel) return;
       const currentVal = preselectId !== undefined ? preselectId : sel.value;
-      sel.innerHTML = '<option value="">— оберіть чат —</option>';
-      const chats = await ensureChatsLoaded(platform);
+      sel.innerHTML = '<option value="">— завантаження… —</option>';
+      const chats = await ensureChatsLoaded(platform, force);
       for (const c of chats) {
         const id   = c.chatKey || c.id || '';
         const name = c.resolvedName || c.displayName || c.name || id;
