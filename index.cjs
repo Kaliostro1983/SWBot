@@ -3509,7 +3509,6 @@ async function startBot() {
       attachClientEvents(client);
       await client.initialize();
     }
-    startSignalWorker();
 
     pushLog('INFO', 'Bot initialize requested', { headless: HEADLESS });
     return { ok: true, message: 'Bot started' };
@@ -3563,7 +3562,6 @@ async function stopBot() {
     state.clientInfo = null;
 
     setStatus('stopped');
-    stopSignalWorker();
     pushLog('INFO', 'Bot stopped');
 
     return { ok: true, message: 'Bot stopped' };
@@ -3603,7 +3601,6 @@ async function logoutBot() {
   state.clientInfo = null;
 
   setStatus('logged_out');
-  stopSignalWorker();
 
   // Full WA cleanup: delete session/cache dirs, clear WA chats, flag flows
   deleteDirIfExists(AUTH_DIR);
@@ -4718,8 +4715,9 @@ async function startupAutoInit() {
     prefetchChatsInBackground().catch(() => {});
     return;
   }
+  // Signal starts independently of WhatsApp.
+  startSignalWorker();
   // Quick startup check — just 2 fast probes, then hand off to the worker's own polling.
-  // The worker (startSignalWorker) is already running and will keep checking every 5 s.
   // Heavy blocking retries here cause 5+ minute stalls when signal-cli is slow to warm up.
   for (let i = 0; i < 2; i += 1) {
     try {
