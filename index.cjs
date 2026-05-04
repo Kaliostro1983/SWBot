@@ -8,7 +8,7 @@ const cookieParser = require('cookie-parser');
 const axios = require('axios');
 const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const { exec, spawn } = require('child_process');
+const { exec, execFile, spawn } = require('child_process');
 const { buildChatCandidates, buildFlowAliases, normalizeChatId } = require('./src/normalization/chatIdentity');
 const chatDirectoryStore = require('./src/chat-directory/chatDirectory');
 
@@ -3726,15 +3726,17 @@ app.post('/api/signal/logout', async (req, res) => {
   try {
     stopSignalWorker();
 
-    // Unlink signal-cli device from Signal servers so next link shows fresh QR
-    if (SIGNAL_API_URL) {
-      try {
-        await axios.post(`${SIGNAL_API_URL}/unlink`, {}, { timeout: 20000 });
-        pushLog('INFO', 'Signal device unlinked from Signal servers');
-      } catch (unlinkErr) {
-        pushLog('WARN', 'Signal unlink request failed (non-fatal)', { message: unlinkErr.message });
-      }
-    }
+    // Unregister signal-cli linked device so next QR link is genuine
+    await new Promise((resolve) => {
+      execFile('docker', [
+        'exec', 'signal-cli-api', 'sh', '-c',
+        'n=$(grep -o "+[0-9]*" /home/.local/share/signal-cli/data/accounts.json | head -1) && [ -n "$n" ] && signal-cli -a "$n" unregister'
+      ], { timeout: 20000 }, (err, _stdout, stderr) => {
+        if (err) pushLog('WARN', 'Signal unregister failed (non-fatal)', { message: stderr || err.message });
+        else pushLog('INFO', 'Signal device unregistered from Signal servers');
+        resolve();
+      });
+    });
 
     state.signal.linked = false;
     state.signal.linkedAccounts = [];
