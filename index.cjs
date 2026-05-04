@@ -3725,6 +3725,17 @@ app.post('/api/signal/start', async (req, res) => {
 app.post('/api/signal/logout', async (req, res) => {
   try {
     stopSignalWorker();
+
+    // Unlink signal-cli device from Signal servers so next link shows fresh QR
+    if (SIGNAL_API_URL) {
+      try {
+        await axios.post(`${SIGNAL_API_URL}/unlink`, {}, { timeout: 20000 });
+        pushLog('INFO', 'Signal device unlinked from Signal servers');
+      } catch (unlinkErr) {
+        pushLog('WARN', 'Signal unlink request failed (non-fatal)', { message: unlinkErr.message });
+      }
+    }
+
     state.signal.linked = false;
     state.signal.linkedAccounts = [];
     state.signal.qrDataUrl = null;

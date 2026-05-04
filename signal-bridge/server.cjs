@@ -347,6 +347,27 @@ app.post('/send', async (req, res) => {
   }
 });
 
+app.post('/unlink', async (req, res) => {
+  try {
+    const accounts = await listAccounts(10000);
+    if (accounts.length === 0) {
+      return res.json({ ok: true, message: 'No account to unlink' });
+    }
+    const number = accounts[0];
+    cachedResolvedAccount = null; // invalidate cache
+    cachedResolvedAt = 0;
+    await axios.delete(`${baseUrl()}/v1/accounts/${encodeURIComponent(number)}`, { timeout: 15000 });
+    res.json({ ok: true, message: `Unlinked ${number}` });
+  } catch (error) {
+    const status = error?.response?.status || 500;
+    res.status(status).json({
+      ok: false,
+      message: error.message,
+      body: error?.response?.data || null
+    });
+  }
+});
+
 app.post('/link', async (req, res) => {
   try {
     const deviceName = String(req.body?.name || 'wa-bridge').trim();
