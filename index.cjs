@@ -785,6 +785,13 @@ function migrateFlowRecord(f) {
   if (out.analysisPlugin === undefined) out.analysisPlugin = null;
   if (out.outdatedDiff === undefined) out.outdatedDiff = null;
   if (out.paused === undefined) out.paused = false;
+  if (!out.addons || typeof out.addons !== 'object') out.addons = {};
+  if (!out.addons.delayMeter || typeof out.addons.delayMeter !== 'object') {
+    out.addons.delayMeter = { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp' };
+  }
+  if (!out.addons.missingMessages || typeof out.addons.missingMessages !== 'object') {
+    out.addons.missingMessages = { enabled: false, time1: '04:00', time2: '19:00', maxMinutes1: 3, maxMinutes2: 8, alertChatId: null, alertPlatform: 'whatsapp' };
+  }
   if (!Array.isArray(out.sourceChatRefs)) {
     out.sourceChatRefs = getSourceIds(out).map((id) => ({
       id,
@@ -1104,7 +1111,20 @@ function normalizeAutomation(body, existingId) {
           : false,
     analysisPlugin:
       body.analysisPlugin !== undefined ? body.analysisPlugin : ex ? ex.analysisPlugin : null,
-    outdatedDiff: body.outdatedDiff !== undefined ? body.outdatedDiff : ex ? ex.outdatedDiff : null
+    outdatedDiff: body.outdatedDiff !== undefined ? body.outdatedDiff : ex ? ex.outdatedDiff : null,
+    addons: mergeAddons(body.addons, ex?.addons)
+  };
+}
+
+function mergeAddons(incoming, existing) {
+  const base = {
+    delayMeter: { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp' },
+    missingMessages: { enabled: false, time1: '04:00', time2: '19:00', maxMinutes1: 3, maxMinutes2: 8, alertChatId: null, alertPlatform: 'whatsapp' }
+  };
+  const src = (incoming && typeof incoming === 'object') ? incoming : (existing && typeof existing === 'object') ? existing : {};
+  return {
+    delayMeter: { ...base.delayMeter, ...(existing?.delayMeter || {}), ...(src.delayMeter || {}) },
+    missingMessages: { ...base.missingMessages, ...(existing?.missingMessages || {}), ...(src.missingMessages || {}) }
   };
 }
 
@@ -1131,6 +1151,130 @@ function isFastapiDirection(flow) {
 }
 
 let flows = [];
+
+// ── Addon runtime state ────────────────────────────────────────────────────
+const addonState = new Map(); // flowId → { delayMeter, missingMessages }
+
+function getAddonState(flowId) {
+  if (!addonState.has(flowId)) {
+    addonState.set(flowId, {
+      delayMeter: { pendingDelays: [] },
+      missingMessages: { lastMessageTs: null, alertSentAt: null }
+    });
+  }
+  return addonState.get(flowId);
+}
+
+// Parse "dd.mm.yyyy, hh:mm:ss" from the first line of message text.
+// Returns UTC ms or null. Message time is assumed to be UTC+3.
+function parseMessageTimestamp(text) {
+  const firstLine = String(text || '').split('\n')[0].trim();
+  const m = firstLine.match(/(\d{2})\.(\d{2})\.(\d{4}),\s*(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh, mi, ss] = m;
+  return Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh) - 3, Number(mi), Number(ss));
+}
+
+function formatDuration(totalSec) {
+  const s = Math.abs(Math.round(totalSec));
+  const min = Math.floor(s / 60);
+  const sec = s % 60;
+  if (min === 0) return `${sec} сек`;
+  if (sec === 0) return `${min} хв`;
+  return `${min} хв ${sec} сек`;
+}
+
+// Returns max idle minutes for the current UTC+3 time based on flow config.
+function getMaxIdleMinutes(cfg) {
+  const nowUtc3 = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const nowMins = nowUtc3.getUTCHours() * 60 + nowUtc3.getUTCMinutes();
+  const [h1 = 4, m1 = 0] = String(cfg.time1 || '04:00').split(':').map(Number);
+  const [h2 = 19, m2 = 0] = String(cfg.time2 || '19:00').split(':').map(Number);
+  const t1 = h1 * 60 + m1;
+  const t2 = h2 * 60 + m2;
+  // period1: time1..time2; period2: time2..time1 (may wrap midnight)
+  const inPeriod1 = t1 <= t2
+    ? (nowMins >= t1 && nowMins < t2)
+    : (nowMins >= t1 || nowMins < t2);
+  return inPeriod1 ? Number(cfg.maxMinutes1 || 3) : Number(cfg.maxMinutes2 || 8);
+}
+
+async function sendAddonAlert(platform, chatId, text) {
+  if (!chatId) return;
+  try {
+    if (platform === 'signal') {
+      await sendSignalMessage(chatId, text);
+    } else {
+      await sendWithRateLimit(chatId, text);
+    }
+  } catch (e) {
+    pushLog('WARN', 'Addon alert send failed', { platform, chatId, error: e.message });
+  }
+}
+
+function processDelayMeterAddon(flow, rawText, sentAtMs) {
+  const cfg = flow?.addons?.delayMeter;
+  if (!cfg?.enabled || !cfg.alertChatId) return;
+  const msgTs = parseMessageTimestamp(rawText);
+  if (msgTs === null || !Number.isFinite(msgTs)) return;
+  const delaySec = Math.round((sentAtMs - msgTs) / 1000);
+  if (delaySec <= 0) return; // future timestamp or clock skew
+  const threshold = Number(cfg.thresholdSec || 60);
+  if (delaySec > threshold) {
+    getAddonState(flow.id).delayMeter.pendingDelays.push(delaySec);
+  }
+}
+
+function processMissingMessagesAddon(flow) {
+  const cfg = flow?.addons?.missingMessages;
+  if (!cfg?.enabled || !cfg.alertChatId) return;
+  const st = getAddonState(flow.id).missingMessages;
+  st.lastMessageTs = Date.now();
+  st.alertSentAt = null; // new message resets alert cooldown
+}
+
+let addonCheckTimer = null;
+
+function startAddonCheckers() {
+  if (addonCheckTimer) return;
+  addonCheckTimer = setInterval(async () => {
+    const now = Date.now();
+    for (const flow of flows) {
+      if (flow.paused) continue;
+
+      // ── Delay Meter: flush per-minute buffer ─────────────────
+      const dmCfg = flow?.addons?.delayMeter;
+      if (dmCfg?.enabled && dmCfg.alertChatId) {
+        const st = getAddonState(flow.id).delayMeter;
+        if (st.pendingDelays.length > 0) {
+          const maxDelay = Math.max(...st.pendingDelays);
+          const chatName = flow.sourceChatRefs?.[0]?.name || flow.name;
+          const text = `Перехоплення в чаті "${chatName}" приходять зі затримкою ${formatDuration(maxDelay)}`;
+          await sendAddonAlert(dmCfg.alertPlatform || 'whatsapp', dmCfg.alertChatId, text);
+          st.pendingDelays = [];
+        }
+      }
+
+      // ── Missing Messages: idle check ─────────────────────────
+      const mmCfg = flow?.addons?.missingMessages;
+      if (mmCfg?.enabled && mmCfg.alertChatId) {
+        const st = getAddonState(flow.id).missingMessages;
+        if (st.lastMessageTs === null) continue;
+        const maxIdleMs = getMaxIdleMinutes(mmCfg) * 60 * 1000;
+        const idleMs = now - st.lastMessageTs;
+        if (idleMs >= maxIdleMs) {
+          if (st.alertSentAt === null || now - st.alertSentAt >= maxIdleMs) {
+            const idleMin = Math.round(idleMs / 60000);
+            const chatName = flow.sourceChatRefs?.[0]?.name || flow.name;
+            const text = `Протягом ${idleMin} хв немає повідомлень із чату "${chatName}"`;
+            await sendAddonAlert(mmCfg.alertPlatform || 'whatsapp', mmCfg.alertChatId, text);
+            st.alertSentAt = now;
+          }
+        }
+      }
+    }
+  }, 60000);
+}
 
 const panelSessions = new Map();
 let panelAuthConfig = loadPanelAuthConfig();
@@ -2676,6 +2820,10 @@ async function processSignalIncomingMessage(message) {
   }
   state.counters.accepted += 1;
 
+  const signalSentAtMs = typeof message.sentAt === 'number' ? message.sentAt : Date.now();
+  processDelayMeterAddon(flow, rawText, signalSentAtMs);
+  processMissingMessagesAddon(flow);
+
   const p = inferPlatforms(flow);
   if (p.targetPlatform === 'signal') {
     const target = String(flow.targetChatId || '').trim();
@@ -3111,6 +3259,10 @@ function attachClientEvents(instance) {
       }
 
       state.counters.accepted += 1;
+
+      const waSentAtMs = (msg.timestamp || Math.floor(Date.now() / 1000)) * 1000;
+      processDelayMeterAddon(flow, rawText, waSentAtMs);
+      processMissingMessagesAddon(flow);
 
       const allowSend = rawText.startsWith(SEND_PREFIX);
       const normalizedText = stripPrefix(rawText, SEND_PREFIX);
@@ -4552,6 +4704,7 @@ clearLogsOnStartup();
 app.listen(PORT, () => {
   startHeartbeat();
   startActivitySummaryLogs();
+  startAddonCheckers();
   setStatus('idle');
   pushLog('INFO', `Control panel started at http://localhost:${PORT}`);
   if (!isPanelAuthEnabled()) {

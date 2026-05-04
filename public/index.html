@@ -1055,6 +1055,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
           <button type="button" class="modal-tab active" data-modal-tab="main"     onclick="switchModalTab('main')">Основні</button>
           <button type="button" class="modal-tab"        data-modal-tab="filter"   onclick="switchModalTab('filter')">Фільтр</button>
           <button type="button" class="modal-tab"        data-modal-tab="advanced" onclick="switchModalTab('advanced')">Додатково</button>
+          <button type="button" class="modal-tab"        data-modal-tab="addon-delay"   onclick="switchModalTab('addon-delay')">Затримка</button>
+          <button type="button" class="modal-tab"        data-modal-tab="addon-missing" onclick="switchModalTab('addon-missing')">Активність</button>
         </div>
 
         <div class="modal-tab-body">
@@ -1144,6 +1146,81 @@ docker compose -f docker-compose.signal.yml up -d</div>
             <label><input type="checkbox" id="flowSendAttachments" /> Пересилати зображення з повідомлення</label>
           </div>
         </div>
+
+        <!-- ── Вкладка: Затримка ── -->
+        <div class="modal-tab-panel" id="mtab-addon-delay">
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <input type="checkbox" id="addonDelayEnabled" onchange="toggleAddonSection('delay',this.checked)" />
+              Увімкнути вимірювач затримки
+            </label>
+            <p class="sub" style="margin-top:4px;">Сповіщення, якщо час між міткою в тексті і фактичною доставкою перевищує поріг.</p>
+          </div>
+          <div id="addonDelayBody" style="display:none;">
+            <div class="field">
+              <label for="addonDelayThreshold">Поріг затримки (секунди)</label>
+              <input id="addonDelayThreshold" type="number" min="1" max="3600" value="60" style="width:120px;" />
+            </div>
+            <div class="field">
+              <label>Куди надсилати сповіщення</label>
+              <div class="field-row" style="gap:8px;align-items:center;">
+                <select id="addonDelayPlatform" style="width:130px;" onchange="refreshAddonChatSelect('delay')">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="signal">Signal</option>
+                </select>
+                <select id="addonDelayChatSelect" style="flex:1;">
+                  <option value="">— оберіть чат —</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Вкладка: Активність ── -->
+        <div class="modal-tab-panel" id="mtab-addon-missing">
+          <div class="field">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <input type="checkbox" id="addonMissingEnabled" onchange="toggleAddonSection('missing',this.checked)" />
+              Увімкнути контроль відсутності повідомлень
+            </label>
+            <p class="sub" style="margin-top:4px;">Сповіщення, якщо з джерела немає повідомлень довше заданого ліміту. Лічильники скидаються при перезапуску бота.</p>
+          </div>
+          <div id="addonMissingBody" style="display:none;">
+            <div class="field">
+              <label>Часовий діапазон 1</label>
+              <div class="field-row" style="gap:8px;align-items:center;flex-wrap:wrap;">
+                <span class="sub" style="white-space:nowrap;">з</span>
+                <input id="addonMissingTime1" type="time" value="04:00" style="width:100px;" />
+                <span class="sub" style="white-space:nowrap;">до</span>
+                <input id="addonMissingTime2" type="time" value="19:00" style="width:100px;" />
+                <span class="sub" style="white-space:nowrap;">макс. тиші</span>
+                <input id="addonMissingMax1" type="number" min="1" max="1440" value="3" style="width:70px;" />
+                <span class="sub">хв</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Часовий діапазон 2 <span class="sub">(решта доби)</span></label>
+              <div class="field-row" style="gap:8px;align-items:center;">
+                <span class="sub" style="white-space:nowrap;">макс. тиші</span>
+                <input id="addonMissingMax2" type="number" min="1" max="1440" value="8" style="width:70px;" />
+                <span class="sub">хв</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Куди надсилати сповіщення</label>
+              <div class="field-row" style="gap:8px;align-items:center;">
+                <select id="addonMissingPlatform" style="width:130px;" onchange="refreshAddonChatSelect('missing')">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="signal">Signal</option>
+                </select>
+                <select id="addonMissingChatSelect" style="flex:1;">
+                  <option value="">— оберіть чат —</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
         </div><!-- /.modal-tab-body -->
 
         <div class="toolbar" style="margin-top:20px;">
@@ -2779,6 +2856,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
         renderSourcePicker();
         // debug section removed
       });
+      fillAddonTab(flow);
       document.getElementById('flowModal').classList.add('open');
     }
 
@@ -2791,6 +2869,114 @@ docker compose -f docker-compose.signal.yml up -d</div>
         try { ctl.abort(); } catch (_) { /* ignore */ }
       }
       chatsAbortByKey.clear();
+    }
+
+    function toggleAddonSection(type, enabled) {
+      const bodyId = type === 'delay' ? 'addonDelayBody' : 'addonMissingBody';
+      const el = document.getElementById(bodyId);
+      if (el) el.style.display = enabled ? '' : 'none';
+    }
+
+    function refreshAddonChatSelect(type) {
+      const platformId = type === 'delay' ? 'addonDelayPlatform' : 'addonMissingPlatform';
+      const selectId   = type === 'delay' ? 'addonDelayChatSelect' : 'addonMissingChatSelect';
+      const platform = document.getElementById(platformId)?.value || 'whatsapp';
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      const currentVal = sel.value;
+      sel.innerHTML = '<option value="">— оберіть чат —</option>';
+      const chats = chatsCacheByPlatform[platform] || [];
+      for (const c of chats) {
+        const id   = c.chatKey || c.id || '';
+        const name = c.resolvedName || c.displayName || c.name || id;
+        if (!id) continue;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        if (id === currentVal) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      // restore previous selection if still present
+      if (currentVal && sel.value !== currentVal) {
+        const ghost = document.createElement('option');
+        ghost.value = currentVal;
+        ghost.textContent = currentVal;
+        ghost.selected = true;
+        sel.appendChild(ghost);
+        sel.value = currentVal;
+      }
+    }
+
+    function fillAddonTab(flow) {
+      const dm = flow?.addons?.delayMeter   || {};
+      const mm = flow?.addons?.missingMessages || {};
+
+      // ── Затримка ───────────────────────────────────────────
+      const delayEnabled = Boolean(dm.enabled);
+      const delayEnabledEl = document.getElementById('addonDelayEnabled');
+      if (delayEnabledEl) delayEnabledEl.checked = delayEnabled;
+      toggleAddonSection('delay', delayEnabled);
+      const delayThEl = document.getElementById('addonDelayThreshold');
+      if (delayThEl) delayThEl.value = dm.thresholdSec ?? 60;
+      const delayPlatEl = document.getElementById('addonDelayPlatform');
+      if (delayPlatEl) delayPlatEl.value = dm.alertPlatform || 'whatsapp';
+      refreshAddonChatSelect('delay');
+      const delaySelEl = document.getElementById('addonDelayChatSelect');
+      if (delaySelEl && dm.alertChatId) delaySelEl.value = dm.alertChatId;
+
+      // ── Активність ─────────────────────────────────────────
+      const missingEnabled = Boolean(mm.enabled);
+      const missingEnabledEl = document.getElementById('addonMissingEnabled');
+      if (missingEnabledEl) missingEnabledEl.checked = missingEnabled;
+      toggleAddonSection('missing', missingEnabled);
+      const t1El = document.getElementById('addonMissingTime1');
+      if (t1El) t1El.value = mm.time1 || '04:00';
+      const t2El = document.getElementById('addonMissingTime2');
+      if (t2El) t2El.value = mm.time2 || '19:00';
+      const max1El = document.getElementById('addonMissingMax1');
+      if (max1El) max1El.value = mm.maxMinutes1 ?? 3;
+      const max2El = document.getElementById('addonMissingMax2');
+      if (max2El) max2El.value = mm.maxMinutes2 ?? 8;
+      const missingPlatEl = document.getElementById('addonMissingPlatform');
+      if (missingPlatEl) missingPlatEl.value = mm.alertPlatform || 'whatsapp';
+      refreshAddonChatSelect('missing');
+      const missingSelEl = document.getElementById('addonMissingChatSelect');
+      if (missingSelEl && mm.alertChatId) missingSelEl.value = mm.alertChatId;
+    }
+
+    function collectAddons() {
+      const delayEnabled  = document.getElementById('addonDelayEnabled')?.checked || false;
+      const missingEnabled = document.getElementById('addonMissingEnabled')?.checked || false;
+      const delayChatSel  = document.getElementById('addonDelayChatSelect');
+      const missingChatSel = document.getElementById('addonMissingChatSelect');
+      // resolve real chatId from select (chatKey → need to map back to id for sending)
+      function resolveAlertChatId(sel) {
+        if (!sel || !sel.value) return null;
+        const val = sel.value;
+        // chatsCacheByPlatform entries have chatKey and id; try to find real chatId
+        const platform = sel.previousElementSibling?.value || 'whatsapp';
+        const entry = (chatsCacheByPlatform[platform] || []).find(
+          (c) => (c.chatKey || c.id) === val
+        );
+        return entry?.id || entry?.chatKey || val;
+      }
+      return {
+        delayMeter: {
+          enabled: delayEnabled,
+          thresholdSec: Number(document.getElementById('addonDelayThreshold')?.value || 60),
+          alertPlatform: document.getElementById('addonDelayPlatform')?.value || 'whatsapp',
+          alertChatId: resolveAlertChatId(delayChatSel)
+        },
+        missingMessages: {
+          enabled: missingEnabled,
+          time1: document.getElementById('addonMissingTime1')?.value || '04:00',
+          time2: document.getElementById('addonMissingTime2')?.value || '19:00',
+          maxMinutes1: Number(document.getElementById('addonMissingMax1')?.value || 3),
+          maxMinutes2: Number(document.getElementById('addonMissingMax2')?.value || 8),
+          alertPlatform: document.getElementById('addonMissingPlatform')?.value || 'whatsapp',
+          alertChatId: resolveAlertChatId(missingChatSel)
+        }
+      };
     }
 
     async function submitFlow(ev) {
@@ -2857,7 +3043,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
         sendAttachments: document.getElementById('flowSendAttachments').checked,
         fastapiUrl: null,
         targetChatId,
-        targetChatRef: targetChatId ? { id: targetChatId, name: chatLabelById(targetChatId) } : null
+        targetChatRef: targetChatId ? { id: targetChatId, name: chatLabelById(targetChatId) } : null,
+        addons: collectAddons()
       };
       console.log('[FLOW SUBMIT BODY]', JSON.stringify(body, null, 2));
       const url = id ? '/api/flows/' + encodeURIComponent(id) : '/api/flows';
