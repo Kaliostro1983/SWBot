@@ -2877,15 +2877,15 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (el) el.style.display = enabled ? '' : 'none';
     }
 
-    function refreshAddonChatSelect(type) {
+    async function refreshAddonChatSelect(type, preselectId) {
       const platformId = type === 'delay' ? 'addonDelayPlatform' : 'addonMissingPlatform';
       const selectId   = type === 'delay' ? 'addonDelayChatSelect' : 'addonMissingChatSelect';
       const platform = document.getElementById(platformId)?.value || 'whatsapp';
       const sel = document.getElementById(selectId);
       if (!sel) return;
-      const currentVal = sel.value;
+      const currentVal = preselectId !== undefined ? preselectId : sel.value;
       sel.innerHTML = '<option value="">— оберіть чат —</option>';
-      const chats = chatsCacheByPlatform[platform] || [];
+      const chats = await ensureChatsLoaded(platform);
       for (const c of chats) {
         const id   = c.chatKey || c.id || '';
         const name = c.resolvedName || c.displayName || c.name || id;
@@ -2896,7 +2896,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
         if (id === currentVal) opt.selected = true;
         sel.appendChild(opt);
       }
-      // restore previous selection if still present
+      // restore previous selection if it's not in the list
       if (currentVal && sel.value !== currentVal) {
         const ghost = document.createElement('option');
         ghost.value = currentVal;
@@ -2907,7 +2907,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }
     }
 
-    function fillAddonTab(flow) {
+    async function fillAddonTab(flow) {
       const dm = flow?.addons?.delayMeter   || {};
       const mm = flow?.addons?.missingMessages || {};
 
@@ -2920,9 +2920,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (delayThEl) delayThEl.value = dm.thresholdSec ?? 60;
       const delayPlatEl = document.getElementById('addonDelayPlatform');
       if (delayPlatEl) delayPlatEl.value = dm.alertPlatform || 'whatsapp';
-      refreshAddonChatSelect('delay');
-      const delaySelEl = document.getElementById('addonDelayChatSelect');
-      if (delaySelEl && dm.alertChatId) delaySelEl.value = dm.alertChatId;
+      await refreshAddonChatSelect('delay', dm.alertChatId || '');
 
       // ── Активність ─────────────────────────────────────────
       const missingEnabled = Boolean(mm.enabled);
@@ -2939,9 +2937,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (max2El) max2El.value = mm.maxMinutes2 ?? 8;
       const missingPlatEl = document.getElementById('addonMissingPlatform');
       if (missingPlatEl) missingPlatEl.value = mm.alertPlatform || 'whatsapp';
-      refreshAddonChatSelect('missing');
-      const missingSelEl = document.getElementById('addonMissingChatSelect');
-      if (missingSelEl && mm.alertChatId) missingSelEl.value = mm.alertChatId;
+      await refreshAddonChatSelect('missing', mm.alertChatId || '');
     }
 
     function collectAddons() {
