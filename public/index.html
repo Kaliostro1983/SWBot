@@ -921,8 +921,7 @@
             <div id="waConnError" class="conn-error"></div>
             <img id="waQr" alt="WhatsApp QR" style="display:none;width:220px;border-radius:12px;background:#fff;padding:10px;margin-top:12px;" />
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waManageToolbar">
-              <button type="button" class="btn btn-ghost btn-sm" onclick="callApi('/api/logout')">Вийти з акаунта</button>
-              <button type="button" class="btn btn-ghost btn-sm" onclick="waChangeAccount()">Змінити акаунт</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="waLogout()">Вийти з акаунта</button>
               <button type="button" class="btn btn-sm btn-danger" onclick="resetSession()">Видалити сесію</button>
             </div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waStopToolbar">
@@ -1869,7 +1868,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
             srcLine = src.length ? formatSourceLines(src) : '—';
           }
           const paused = Boolean(f.paused);
-          const needsReconf = Boolean(f.needsWaReconfigure);
+          const needsWaReconf = Boolean(f.needsWaReconfigure);
+          const needsSigReconf = Boolean(f.needsSignalReconfigure);
           const pauseIcon = paused ? ICON_PLAY : ICON_PAUSE;
           const pauseTitle = paused ? 'Запустити' : 'Пауза';
           const fid = encodeURIComponent(f.id);
@@ -1877,7 +1877,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
         <div class="flow-card${paused ? ' paused' : ''}">
           <div>
             <div class="dir-pill">${directionLabel(f)}</div>
-            <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}${needsReconf ? '<span class="reconfigure-badge">⚠ Потрібне оновлення чатів</span>' : ''}</h3>
+            <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}${needsWaReconf || needsSigReconf ? '<span class="reconfigure-badge">⚠ Потрібне оновлення чатів</span>' : ''}</h3>
             <div class="flow-meta">
               <div><span style="color:var(--muted);font-size:12px;">Джерело:</span> ${srcLine}</div>
               <div style="margin-top:4px;">${filterSummaryLine(f)}</div>
@@ -1975,7 +1975,12 @@ docker compose -f docker-compose.signal.yml up -d</div>
     }
 
     async function signalDisconnect() {
-      if (!confirm('Зупинити Signal у сервісі?\n\nСервіс перестане отримувати та відправляти повідомлення через Signal. Ваш акаунт Signal залишається незмінним.\n\nДля повторного запуску натисніть "Зʼєднатися".')) return;
+      if (!confirm(
+        'Вийти з акаунта Signal?\n\n' +
+        '• Кеш чатів Signal буде очищено з каталогу\n' +
+        '• Автоматизації з Signal буде позначено для повторного налаштування\n\n' +
+        'Для підключення відскануйте QR-код Signal.'
+      )) return;
       await callApi('/api/signal/logout');
     }
 
@@ -1984,24 +1989,21 @@ docker compose -f docker-compose.signal.yml up -d</div>
       window.location.href = '/login.html';
     }
 
-    async function resetSession() {
-      if (!confirm('Видалити збережену сесію WhatsApp?\n\nПісля цього потрібно буде відсканувати QR-код заново для входу в акаунт.')) return;
-      await callApi('/api/reset-session');
-    }
-
-    async function waChangeAccount() {
+    async function waLogout() {
       if (!confirm(
-        'Змінити акаунт WhatsApp?\n\n' +
+        'Вийти з акаунта WhatsApp?\n\n' +
         '• Поточний сеанс буде завершено\n' +
         '• Кеш авторизації буде видалено\n' +
         '• Чати WhatsApp буде очищено з каталогу\n' +
         '• Автоматизації з WhatsApp буде позначено для повторного налаштування\n\n' +
-        'Після цього відскануйте QR-код нового акаунта.'
+        'Для підключення відскануйте QR-код.'
       )) return;
-      const result = await callApi('/api/wa/change-account');
-      if (result?.ok) {
-        alert('Акаунт WhatsApp скинуто. Відскануйте QR-код для нового акаунта.');
-      }
+      await callApi('/api/logout');
+    }
+
+    async function resetSession() {
+      if (!confirm('Видалити збережену сесію WhatsApp?\n\nПісля цього потрібно буде відсканувати QR-код заново для входу в акаунт.')) return;
+      await callApi('/api/reset-session');
     }
 
     async function signalLoginQr() {

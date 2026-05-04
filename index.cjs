@@ -1113,7 +1113,8 @@ function normalizeAutomation(body, existingId) {
       body.analysisPlugin !== undefined ? body.analysisPlugin : ex ? ex.analysisPlugin : null,
     outdatedDiff: body.outdatedDiff !== undefined ? body.outdatedDiff : ex ? ex.outdatedDiff : null,
     addons: mergeAddons(body.addons, ex?.addons),
-    needsWaReconfigure: false
+    needsWaReconfigure: false,
+    needsSignalReconfigure: false
   };
 }
 
@@ -3574,7 +3575,6 @@ async function logoutBot() {
     });
   }
 
-  // Always destroy the client and clean up state, regardless of logout success
   try { await client.destroy(); } catch {}
   client = null;
   lastQr = null;
@@ -3586,8 +3586,30 @@ async function logoutBot() {
 
   setStatus('logged_out');
   stopSignalWorker();
-  pushLog('INFO', 'Logged out');
 
+  // Full WA cleanup: delete session/cache dirs, clear WA chats, flag flows
+  deleteDirIfExists(AUTH_DIR);
+  deleteDirIfExists(CACHE_DIR);
+  try { if (fs.existsSync(WHATSAPP_CHATS_CACHE_FILE)) fs.unlinkSync(WHATSAPP_CHATS_CACHE_FILE); } catch {}
+
+  const waDir = chatDirectoryStore.loadChatDirectory();
+  const waFiltered = waDir.filter((e) => e.platform !== 'whatsapp');
+  if (waFiltered.length !== waDir.length) chatDirectoryStore.saveChatDirectory(waFiltered);
+
+  let waFlowsChanged = false;
+  flows = flows.map((f) => {
+    if (f.sourcePlatform === 'whatsapp' || f.targetPlatform === 'whatsapp') {
+      waFlowsChanged = true;
+      return { ...f, needsWaReconfigure: true };
+    }
+    return f;
+  });
+  if (waFlowsChanged) {
+    saveFlowsToDisk(flows);
+    broadcastEvent('state', getPublicState());
+  }
+
+  pushLog('INFO', 'WhatsApp logged out: session cleared, affected flows flagged');
   return { ok: true, message: 'Logged out' };
 }
 
@@ -3611,50 +3633,6 @@ async function resetSession() {
       stack: error.stack
     });
 
-    return { ok: false, message: error.message };
-  }
-}
-
-async function changeWaAccount() {
-  try {
-    if (client) {
-      await stopBot();
-    }
-
-    deleteDirIfExists(AUTH_DIR);
-    deleteDirIfExists(CACHE_DIR);
-
-    const deleteFileIfExists = (filePath) => {
-      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
-    };
-    deleteFileIfExists(WHATSAPP_CHATS_CACHE_FILE);
-
-    // Clear WA entries from chat-directory
-    const dir = chatDirectoryStore.loadChatDirectory();
-    const filtered = dir.filter((e) => e.platform !== 'whatsapp');
-    if (filtered.length !== dir.length) {
-      chatDirectoryStore.saveChatDirectory(filtered);
-    }
-
-    // Mark affected flows
-    let flowsChanged = false;
-    flows = flows.map((f) => {
-      if (f.sourcePlatform === 'whatsapp' || f.targetPlatform === 'whatsapp') {
-        flowsChanged = true;
-        return { ...f, needsWaReconfigure: true };
-      }
-      return f;
-    });
-    if (flowsChanged) {
-      saveFlowsToDisk(flows);
-      broadcastEvent('state', getPublicState());
-    }
-
-    setStatus('logged_out');
-    pushLog('INFO', 'WhatsApp account change: auth/cache cleared, affected flows flagged');
-    return { ok: true, message: 'Акаунт WhatsApp скинуто. Відскануйте QR для нового акаунта.' };
-  } catch (error) {
-    pushLog('ERROR', 'changeWaAccount failed', { message: error.message });
     return { ok: false, message: error.message };
   }
 }
@@ -3715,10 +3693,6 @@ app.post('/api/reset-session', async (req, res) => {
   res.json(await resetSession());
 });
 
-app.post('/api/wa/change-account', async (req, res) => {
-  res.json(await changeWaAccount());
-});
-
 app.post('/api/signal/start', async (req, res) => {
   try {
     if (!SIGNAL_API_URL) {
@@ -3739,8 +3713,26 @@ app.post('/api/signal/logout', async (req, res) => {
     state.signal.linked = false;
     state.signal.linkedAccounts = [];
     state.signal.qrDataUrl = null;
+
+    // Full Signal cleanup: clear Signal chats, flag flows
+    try { if (fs.existsSync(SIGNAL_CHATS_CACHE_FILE)) fs.unlinkSync(SIGNAL_CHATS_CACHE_FILE); } catch {}
+
+    const sigDir = chatDirectoryStore.loadChatDirectory();
+    const sigFiltered = sigDir.filter((e) => e.platform !== 'signal');
+    if (sigFiltered.length !== sigDir.length) chatDirectoryStore.saveChatDirectory(sigFiltered);
+
+    let sigFlowsChanged = false;
+    flows = flows.map((f) => {
+      if (f.sourcePlatform === 'signal' || f.targetPlatform === 'signal') {
+        sigFlowsChanged = true;
+        return { ...f, needsSignalReconfigure: true };
+      }
+      return f;
+    });
+    if (sigFlowsChanged) saveFlowsToDisk(flows);
+
     broadcastEvent('state', getPublicState());
-    pushLog('INFO', 'Signal disconnected from service (worker stopped)');
+    pushLog('INFO', 'Signal logged out: cache cleared, affected flows flagged');
     res.json({ ok: true, message: 'Signal disconnected' });
   } catch (error) {
     res.status(500).json({ ok: false, message: error.message || String(error) });
