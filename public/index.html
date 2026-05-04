@@ -353,6 +353,19 @@
       margin-left: 8px;
       vertical-align: middle;
     }
+    .reconfigure-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: rgba(251,191,36,0.15);
+      color: #F59E0B;
+      border: 1px solid rgba(251,191,36,0.35);
+      margin-left: 8px;
+      vertical-align: middle;
+    }
 
     /* ─── Icon buttons ─────────────────────────────────────── */
     .icon-btn {
@@ -909,6 +922,7 @@
             <img id="waQr" alt="WhatsApp QR" style="display:none;width:220px;border-radius:12px;background:#fff;padding:10px;margin-top:12px;" />
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waManageToolbar">
               <button type="button" class="btn btn-ghost btn-sm" onclick="callApi('/api/logout')">Вийти з акаунта</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="waChangeAccount()">Змінити акаунт</button>
               <button type="button" class="btn btn-sm btn-danger" onclick="resetSession()">Видалити сесію</button>
             </div>
             <div class="toolbar" style="margin-top:12px;margin-bottom:0;display:none;" id="waStopToolbar">
@@ -1855,6 +1869,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
             srcLine = src.length ? formatSourceLines(src) : '—';
           }
           const paused = Boolean(f.paused);
+          const needsReconf = Boolean(f.needsWaReconfigure);
           const pauseIcon = paused ? ICON_PLAY : ICON_PAUSE;
           const pauseTitle = paused ? 'Запустити' : 'Пауза';
           const fid = encodeURIComponent(f.id);
@@ -1862,7 +1877,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
         <div class="flow-card${paused ? ' paused' : ''}">
           <div>
             <div class="dir-pill">${directionLabel(f)}</div>
-            <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}</h3>
+            <h3>${escapeHtml(f.name)}${paused ? '<span class="paused-badge">Пауза</span>' : ''}${needsReconf ? '<span class="reconfigure-badge">⚠ Потрібне оновлення чатів</span>' : ''}</h3>
             <div class="flow-meta">
               <div><span style="color:var(--muted);font-size:12px;">Джерело:</span> ${srcLine}</div>
               <div style="margin-top:4px;">${filterSummaryLine(f)}</div>
@@ -1972,6 +1987,21 @@ docker compose -f docker-compose.signal.yml up -d</div>
     async function resetSession() {
       if (!confirm('Видалити збережену сесію WhatsApp?\n\nПісля цього потрібно буде відсканувати QR-код заново для входу в акаунт.')) return;
       await callApi('/api/reset-session');
+    }
+
+    async function waChangeAccount() {
+      if (!confirm(
+        'Змінити акаунт WhatsApp?\n\n' +
+        '• Поточний сеанс буде завершено\n' +
+        '• Кеш авторизації буде видалено\n' +
+        '• Чати WhatsApp буде очищено з каталогу\n' +
+        '• Автоматизації з WhatsApp буде позначено для повторного налаштування\n\n' +
+        'Після цього відскануйте QR-код нового акаунта.'
+      )) return;
+      const result = await callApi('/api/wa/change-account');
+      if (result?.ok) {
+        alert('Акаунт WhatsApp скинуто. Відскануйте QR-код для нового акаунта.');
+      }
     }
 
     async function signalLoginQr() {

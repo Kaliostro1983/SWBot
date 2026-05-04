@@ -1112,7 +1112,8 @@ function normalizeAutomation(body, existingId) {
     analysisPlugin:
       body.analysisPlugin !== undefined ? body.analysisPlugin : ex ? ex.analysisPlugin : null,
     outdatedDiff: body.outdatedDiff !== undefined ? body.outdatedDiff : ex ? ex.outdatedDiff : null,
-    addons: mergeAddons(body.addons, ex?.addons)
+    addons: mergeAddons(body.addons, ex?.addons),
+    needsWaReconfigure: false
   };
 }
 
@@ -3614,6 +3615,50 @@ async function resetSession() {
   }
 }
 
+async function changeWaAccount() {
+  try {
+    if (client) {
+      await stopBot();
+    }
+
+    deleteDirIfExists(AUTH_DIR);
+    deleteDirIfExists(CACHE_DIR);
+
+    const deleteFileIfExists = (filePath) => {
+      try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+    };
+    deleteFileIfExists(WHATSAPP_CHATS_CACHE_FILE);
+
+    // Clear WA entries from chat-directory
+    const dir = chatDirectoryStore.loadChatDirectory();
+    const filtered = dir.filter((e) => e.platform !== 'whatsapp');
+    if (filtered.length !== dir.length) {
+      chatDirectoryStore.saveChatDirectory(filtered);
+    }
+
+    // Mark affected flows
+    let flowsChanged = false;
+    flows = flows.map((f) => {
+      if (f.sourcePlatform === 'whatsapp' || f.targetPlatform === 'whatsapp') {
+        flowsChanged = true;
+        return { ...f, needsWaReconfigure: true };
+      }
+      return f;
+    });
+    if (flowsChanged) {
+      saveFlowsToDisk(flows);
+      broadcastEvent('state', getPublicState());
+    }
+
+    setStatus('logged_out');
+    pushLog('INFO', 'WhatsApp account change: auth/cache cleared, affected flows flagged');
+    return { ok: true, message: 'Акаунт WhatsApp скинуто. Відскануйте QR для нового акаунта.' };
+  } catch (error) {
+    pushLog('ERROR', 'changeWaAccount failed', { message: error.message });
+    return { ok: false, message: error.message };
+  }
+}
+
 function startHeartbeat() {
   if (heartbeatTimer) return;
 
@@ -3668,6 +3713,10 @@ app.post('/api/logout', async (req, res) => {
 
 app.post('/api/reset-session', async (req, res) => {
   res.json(await resetSession());
+});
+
+app.post('/api/wa/change-account', async (req, res) => {
+  res.json(await changeWaAccount());
 });
 
 app.post('/api/signal/start', async (req, res) => {
