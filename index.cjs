@@ -3130,6 +3130,24 @@ function attachClientEvents(instance) {
 
     setStatus('authenticated');
     pushLog('INFO', 'Authenticated');
+
+    // Watchdog: if ready doesn't follow within 90s the session is stale on WA servers.
+    // Clear auth files so next startBot() shows a fresh QR instead of looping forever.
+    const readyWatchdog = setTimeout(async () => {
+      if (state.ready || client !== instance) return; // already recovered elsewhere
+      pushLog('WARN', 'WA session stale: authenticated but not ready after 90s — clearing session for fresh QR');
+      try { await instance.destroy(); } catch {}
+      client = null;
+      await cleanupChromeLocks();
+      deleteDirIfExists(AUTH_DIR);
+      deleteDirIfExists(CACHE_DIR);
+      setStatus('awaiting_qr');
+      setTimeout(() => startBot().catch(() => {}), 2000);
+    }, 90000);
+
+    instance.once('ready', () => clearTimeout(readyWatchdog));
+    instance.once('disconnected', () => clearTimeout(readyWatchdog));
+    instance.once('auth_failure', () => clearTimeout(readyWatchdog));
   });
 
   instance.on('auth_failure', (msg) => {
