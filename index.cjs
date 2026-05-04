@@ -3726,16 +3726,23 @@ app.post('/api/signal/logout', async (req, res) => {
   try {
     stopSignalWorker();
 
-    // Unregister signal-cli linked device so next QR link is genuine
+    // Clear signal-cli local account data so next QR link shows a genuine fresh code.
+    // Safer than 'signal-cli unregister' (which would talk to Signal servers and risk
+    // breaking things if signal-cli is the primary device).
+    pushLog('INFO', 'Signal logout: clearing local signal-cli data');
     await new Promise((resolve) => {
-      execFile('docker', [
+      execFile('/usr/bin/docker', [
         'exec', 'signal-cli-api', 'sh', '-c',
-        'n=$(grep -o "+[0-9]*" /home/.local/share/signal-cli/data/accounts.json | head -1) && [ -n "$n" ] && signal-cli -a "$n" unregister'
-      ], { timeout: 20000 }, (err, _stdout, stderr) => {
-        if (err) pushLog('WARN', 'Signal unregister failed (non-fatal)', { message: stderr || err.message });
-        else pushLog('INFO', 'Signal device unregistered from Signal servers');
+        'rm -rf /home/.local/share/signal-cli/data'
+      ], { timeout: 15000 }, (err, _stdout, stderr) => {
+        if (err) pushLog('WARN', 'Signal data clear failed (non-fatal)', { message: stderr || err.message });
+        else pushLog('INFO', 'Signal local data cleared');
         resolve();
       });
+    });
+    // Restart signal-bridge to flush its in-memory account cache
+    execFile('/usr/bin/docker', ['restart', 'signal-bridge'], { timeout: 15000 }, (err) => {
+      if (err) pushLog('WARN', 'signal-bridge restart failed', { message: err.message });
     });
 
     state.signal.linked = false;
