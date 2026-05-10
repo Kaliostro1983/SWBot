@@ -787,7 +787,7 @@ function migrateFlowRecord(f) {
   if (out.paused === undefined) out.paused = false;
   if (!out.addons || typeof out.addons !== 'object') out.addons = {};
   if (!out.addons.delayMeter || typeof out.addons.delayMeter !== 'object') {
-    out.addons.delayMeter = { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp' };
+    out.addons.delayMeter = { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp', includeCapture: false };
   }
   if (!out.addons.missingMessages || typeof out.addons.missingMessages !== 'object') {
     out.addons.missingMessages = { enabled: false, time1: '04:00', time2: '19:00', maxMinutes1: 3, maxMinutes2: 8, alertChatId: null, alertPlatform: 'whatsapp' };
@@ -1120,7 +1120,7 @@ function normalizeAutomation(body, existingId) {
 
 function mergeAddons(incoming, existing) {
   const base = {
-    delayMeter: { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp' },
+    delayMeter: { enabled: false, thresholdSec: 60, alertChatId: null, alertPlatform: 'whatsapp', includeCapture: false },
     missingMessages: { enabled: false, time1: '04:00', time2: '19:00', maxMinutes1: 3, maxMinutes2: 8, alertChatId: null, alertPlatform: 'whatsapp' }
   };
   const src = (incoming && typeof incoming === 'object') ? incoming : (existing && typeof existing === 'object') ? existing : {};
@@ -1223,7 +1223,7 @@ function processDelayMeterAddon(flow, rawText, sentAtMs) {
   if (delaySec <= 0) return; // future timestamp or clock skew
   const threshold = Number(cfg.thresholdSec || 60);
   if (delaySec > threshold) {
-    getAddonState(flow.id).delayMeter.pendingDelays.push(delaySec);
+    getAddonState(flow.id).delayMeter.pendingDelays.push({ delaySec, rawText });
   }
 }
 
@@ -1249,9 +1249,12 @@ function startAddonCheckers() {
       if (dmCfg?.enabled && dmCfg.alertChatId) {
         const st = getAddonState(flow.id).delayMeter;
         if (st.pendingDelays.length > 0) {
-          const maxDelay = Math.max(...st.pendingDelays);
+          const worst = st.pendingDelays.reduce((a, b) => (b.delaySec > a.delaySec ? b : a));
           const chatName = flow.sourceChatRefs?.[0]?.name || flow.name;
-          const text = `Перехоплення в чаті "${chatName}" приходять зі затримкою ${formatDuration(maxDelay)}`;
+          let text = `Перехоплення в чаті "${chatName}" приходять зі затримкою ${formatDuration(worst.delaySec)}`;
+          if (dmCfg.includeCapture && worst.rawText) {
+            text += `\n\n${worst.rawText}`;
+          }
           await sendAddonAlert(dmCfg.alertPlatform || 'whatsapp', dmCfg.alertChatId, text);
           st.pendingDelays = [];
         }
