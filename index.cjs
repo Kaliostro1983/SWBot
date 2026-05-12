@@ -3743,7 +3743,17 @@ app.post('/api/signal/logout', async (req, res) => {
         resolve();
       });
     });
-    // Restart signal-bridge to flush its in-memory account cache
+    // Restart signal-cli-api so the internal signal-cli process re-initialises from scratch
+    // (without this, /v1/receive returns 400 after a fresh QR link because the old process
+    // is still running and not subscribed to the new account).
+    // Restart signal-bridge afterwards to flush its in-memory account cache.
+    await new Promise((resolve) => {
+      execFile('/usr/bin/docker', ['restart', 'signal-cli-api'], { timeout: 30000 }, (err) => {
+        if (err) pushLog('WARN', 'signal-cli-api restart failed (non-fatal)', { message: err.message });
+        else pushLog('INFO', 'signal-cli-api restarted');
+        resolve();
+      });
+    });
     execFile('/usr/bin/docker', ['restart', 'signal-bridge'], { timeout: 15000 }, (err) => {
       if (err) pushLog('WARN', 'signal-bridge restart failed', { message: err.message });
     });
