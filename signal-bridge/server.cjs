@@ -265,7 +265,7 @@ app.get('/chats', async (_req, res) => {
         const decodedGid = tryDecodeBase64Id(gid);
         if (decodedGid) gid = decodedGid;
         const prefixedId = gid ? `group.${gid}` : '';
-        const item = normalizeChatItem(prefixedId, g?.name || gid);
+        const item = normalizeChatItem(prefixedId, g?.name || g?.title || gid);
         if (item) chats.push(item);
       }
     } else {
