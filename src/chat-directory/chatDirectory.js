@@ -102,7 +102,8 @@ function isLikelyTechnicalName(name) {
   if (/^signal-group:/i.test(n)) return true;
   if (/^[0-9a-f-]{36}$/i.test(n)) return true;
   if (/^\+?\d{10,}$/.test(n)) return true;
-  if (n.length > 48 && /^[A-Za-z0-9+/=_-]+$/.test(n)) return true;
+  // Signal group IDs are 32 bytes base64-encoded = 44 chars; catch those too.
+  if (n.length >= 40 && /^[A-Za-z0-9+/=_-]+$/.test(n)) return true;
   return false;
 }
 
