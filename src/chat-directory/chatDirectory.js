@@ -515,6 +515,11 @@ function upsertChatFromMessage(message) {
     existing.chatType = hintedType || detectChatTypeFromAliases(existing.aliases);
     if (nextDisplayName) {
       existing.displayName = pickBetterName(existing.displayName, nextDisplayName);
+      // If manualLabel is a technical ID (auto-set from a message before the name was known,
+      // not explicitly chosen by the user), clear it so the human-readable displayName is used.
+      if (existing.manualLabel && isLikelyTechnicalName(existing.manualLabel)) {
+        existing.manualLabel = '';
+      }
     }
     saveChatDirectory(directory);
     const mergedAliases = existing.aliases.filter((a) => !oldAliases.includes(a));
