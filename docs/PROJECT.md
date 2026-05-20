@@ -46,6 +46,7 @@ Node.js-бот на базі **whatsapp-web.js** (Puppeteer/Chromium): слух�
 | `logs/` | Логи рантайму (`bot.log`, `health.json` тощо) — згенеровані файли |
 | `run_bot.bat` | Windows: `npm install` за потреби, відкриває браузер на порт, `node index.cjs` |
 | `reset_session.bat` | Windows: видаляє `.wwebjs_auth` та `.wwebjs_cache` (скидання сесії WhatsApp) |
+| `docker-compose.signal.yml` | Docker Compose для Signal (`signal-cli-api` + `signal-bridge`); працює на Windows і Linux |
 | `VERSION` | Версія збірки (один рядок, наприклад `0.1`); показується в панелі та на сторінці входу. **Після завершення кожного наступного етапу** розробки додавати **0.1** до поточного значення (0.1 → 0.2 → 0.3 …) і за бажанням узгоджувати `version` у `package.json` |
 | `package.json` / `package-lock.json` | Залежності та скрипти (`npm start` → `node index.cjs`) |
 | `.gitignore` | Що не потрапляє в Git (сесія, логи, `node_modules`, `.env`) |
@@ -99,10 +100,52 @@ Node.js-бот на базі **whatsapp-web.js** (Puppeteer/Chromium): слух�
 
 ## 5. Запуск
 
-- **npm:** з кореня проєкту — `npm install`, потім `npm start` (або `node index.cjs`).
-- **Windows:** `run_bot.bat` (відкриває `http://localhost:3001` і стартує бота).
-- Поруч має бути доступний бекенд за `FASTAPI_URL`, якщо це потрібно для вашого сценарію.
-- Для Signal-сценаріїв підніміть bridge з `docker-compose.signal.yml`; див. **`docs/README-SIGNAL.md`**.
+Бот підтримує **Windows** (розробка/локальне тестування) і **Linux** (production-сервер).
+
+### Windows
+
+```bat
+npm install        # одноразово
+run_bot.bat        # відкриває http://localhost:3001 і стартує бота
+reset_session.bat  # очищення сесії WhatsApp (якщо потрібно)
+```
+
+Перезапуск після `git pull`: закрити вікно `run_bot.bat` і запустити знову.
+
+### Linux (systemd)
+
+```bash
+npm install        # одноразово
+sudo systemctl enable swbot  # одноразово — реєструє авто-запуск
+sudo systemctl start swbot
+```
+
+**Деплой оновлень:**
+
+```bash
+cd /шлях/до/бота && git pull && pkill -f "node.*index.cjs"
+```
+
+`systemd` автоматично перезапускає процес (`Restart=always`). Новий код починає діяти одразу після `pkill`. `npm install` потрібен тільки якщо змінились `package.json`-залежності.
+
+> ⚠️ `git pull` + API-зупинка через панель **не перезавантажують код** — потрібен саме `pkill`.
+
+### Signal (обидві платформи)
+
+Потребує Docker. Підняти bridge:
+
+```bash
+docker compose -f docker-compose.signal.yml up -d --build
+```
+
+Деплой оновлень signal-bridge (після зміни `signal-bridge/server.cjs`):
+
+```bash
+docker compose -f docker-compose.signal.yml build signal-bridge
+docker compose -f docker-compose.signal.yml up -d signal-bridge
+```
+
+Детальна інструкція: **`docs/README-SIGNAL.md`**.
 
 ---
 
@@ -141,7 +184,11 @@ Node.js-бот на базі **whatsapp-web.js** (Puppeteer/Chromium): слух�
 
 - **Стек:** Node.js, CommonJS (`index.cjs`), Express, whatsapp-web.js, axios → зовнішній HTTP API.
 - **Панель:** статика з `public/`, порт з `PORT`.
-- **Сесія WhatsApp:** зберігається в `.wwebjs_auth` (скидання — `reset_session.bat` або вручну).
+- **Сесія WhatsApp:** зберігається в `.wwebjs_auth` (скидання — `reset_session.bat` на Windows або `rm -rf .wwebjs_auth .wwebjs_cache` на Linux).
+- **Платформи:** розробка — Windows; production — Linux (Ubuntu/Debian, systemd-сервіс `swbot`).
+- **Деплой на Linux:** `git pull && pkill -f "node.*index.cjs"` → systemd перезапускає автоматично. Зупинка через панель/API **не перезавантажує код**.
+- **Signal:** Docker (`docker-compose.signal.yml`), два контейнери: `signal-cli-api` + `signal-bridge` (порт 3002). Вихід з акаунта — перезапускає обидва контейнери.
+- **Гілка розробки AI:** `claude/serene-spence-559a1d` → зміни зливаються в `main` після завершення задачі.
 
-Вказівка для асистента: *«Проєкт описано в `docs/PROJECT.md`, журнал — `docs/CHANGELOG.md`»*.
+Вказівка для асистента: *«Проєкт описано в `docs/PROJECT.md`, журнал — `docs/CHANGELOG.md`, Signal — `docs/README-SIGNAL.md`»*.
 
