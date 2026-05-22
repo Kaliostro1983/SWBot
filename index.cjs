@@ -972,7 +972,7 @@ function normalizeAutomation(body, existingId) {
     if (!sourcePlatform) sourcePlatform = p.sourcePlatform;
     if (!targetPlatform) targetPlatform = p.targetPlatform;
   }
-  if (!['whatsapp', 'signal'].includes(sourcePlatform)) sourcePlatform = 'whatsapp';
+  if (!['whatsapp', 'signal', 'http'].includes(sourcePlatform)) sourcePlatform = 'whatsapp';
   if (!['whatsapp', 'signal', 'fastapi'].includes(targetPlatform)) targetPlatform = 'fastapi';
   if (sourcePlatform !== 'signal') sourceChatKey = '';
   const direction = sourcePlatform === 'whatsapp' && targetPlatform === 'whatsapp'
