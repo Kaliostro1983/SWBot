@@ -1083,9 +1083,10 @@ docker compose -f docker-compose.signal.yml up -d</div>
             <label>Напрямок пересилання</label>
             <div class="field-row" style="align-items:center;">
               <div class="field">
-                <select id="flowSourcePlatform">
+                <select id="flowSourcePlatform" onchange="onSourcePlatformChange()">
                   <option value="whatsapp">WhatsApp</option>
                   <option value="signal">Signal</option>
+                  <option value="http">HTTP Push</option>
                 </select>
               </div>
               <div style="padding:0 8px; color: var(--muted); font-weight:700;">→</div>
@@ -1735,6 +1736,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
     function platformLabel(p) {
       if (p === 'signal') return 'Signal';
       if (p === 'fastapi') return 'FastAPI';
+      if (p === 'http') return 'HTTP Push';
       return 'WhatsApp';
     }
 
@@ -2662,6 +2664,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }).slice(0, 200);
     }
 
+    function onSourcePlatformChange() { toggleFlowDirectionUi(); }
+
     function toggleFlowDirectionUi() {
       const sourceSel = document.getElementById('flowSourcePlatform');
       const targetSel = document.getElementById('flowTargetPlatform');
@@ -2669,7 +2673,8 @@ docker compose -f docker-compose.signal.yml up -d</div>
       const src = sourceSel.value;
       const tgt = targetSel.value;
       const srcWrap = document.getElementById('flowSourcesWaWrap');
-      if (srcWrap) srcWrap.style.display = 'block';
+      // HTTP Push has no source chat — hide the picker
+      if (srcWrap) srcWrap.style.display = src === 'http' ? 'none' : 'block';
       const srcLabel = document.querySelector('label[for="flowSources"]');
       if (srcLabel) {
         srcLabel.textContent = src === 'signal'
@@ -2678,7 +2683,9 @@ docker compose -f docker-compose.signal.yml up -d</div>
       }
       const hint = document.getElementById('flowSourcesFieldHint');
       if (hint) {
-        hint.textContent = '';
+        hint.textContent = src === 'http'
+          ? 'Джерело: POST /api/push — надсилати з FastAPI або будь-якого HTTP клієнта'
+          : '';
       }
       const srcSearch = document.getElementById('flowSourcesSearch');
       if (srcSearch) {
@@ -3030,7 +3037,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
         showToast('Оберіть вихідний чат Signal зі списку каталогу (або перевірте помилку завантаження вище).', 'error');
         return;
       }
-      if (sourcePlatform !== 'signal' && sourceChatIds.length === 0) {
+      if (sourcePlatform !== 'signal' && sourcePlatform !== 'http' && sourceChatIds.length === 0) {
         showToast('Оберіть хоча б один чат-джерело.', 'error');
         return;
       }

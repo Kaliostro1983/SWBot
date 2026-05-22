@@ -3665,6 +3665,63 @@ function startHeartbeat() {
   }, 5000);
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/push  — HTTP Push source
+// Accepts { text, image_base64 } from external services (e.g. FastAPI).
+// Routes to all active flows whose sourcePlatform === 'http'.
+// ---------------------------------------------------------------------------
+app.post('/api/push', async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').trim();
+    const imageBase64 = String(req.body?.image_base64 || '').trim();
+    if (!text && !imageBase64) {
+      return res.status(400).json({ ok: false, message: 'text or image_base64 is required' });
+    }
+    const httpFlows = flows.filter((f) => !f.paused && inferPlatforms(f).sourcePlatform === 'http');
+    if (httpFlows.length === 0) {
+      return res.status(404).json({ ok: false, message: 'No active HTTP-Push flows configured. Add a flow with source=HTTP Push in the panel.' });
+    }
+    let sent = 0;
+    const errors = [];
+    for (const flow of httpFlows) {
+      const { targetPlatform } = inferPlatforms(flow);
+      const targetChatId = String(flow.targetChatId || '').trim();
+      if (!targetChatId) continue;
+      try {
+        if (targetPlatform === 'signal') {
+          const attachments = imageBase64
+            ? [`data:image/png;filename=map.png;base64,${imageBase64}`]
+            : [];
+          await sendSignalMessage(targetChatId, text, attachments);
+          state.counters.signalSent = (state.counters.signalSent || 0) + 1;
+        } else {
+          // WhatsApp
+          if (!client || state.wa.status !== 'ready') {
+            throw new Error('WhatsApp client is not ready');
+          }
+          if (imageBase64) {
+            await sendMediaWithRateLimit(targetChatId, 'image/png', imageBase64, 'map.png', text || undefined);
+          } else {
+            await sendWithRateLimit(targetChatId, text);
+          }
+        }
+        sent++;
+        pushLog('INFO', 'HTTP Push sent', { flow: flow.name || flow.id, targetPlatform, targetChatId });
+      } catch (e) {
+        pushLog('ERROR', 'HTTP Push send failed', { flow: flow.name || flow.id, targetPlatform, targetChatId, error: e.message });
+        errors.push(`${flow.name || flow.id}: ${e.message}`);
+      }
+    }
+    state.lastSendAt = nowIso();
+    if (sent === 0 && errors.length > 0) {
+      return res.status(500).json({ ok: false, message: errors[0], errors });
+    }
+    res.json({ ok: true, sent, errors: errors.length ? errors : undefined });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: error.message || String(error) });
+  }
+});
+
 app.get('/api/state', (req, res) => {
   res.json(getPublicState());
 });
