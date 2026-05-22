@@ -2484,8 +2484,10 @@ docker compose -f docker-compose.signal.yml up -d</div>
         } else {
           signalSourceChatsLoadError = '';
         }
-        await ensureChatsLoaded(src, force);
-        if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
+        if (src !== 'http') {
+          await ensureChatsLoaded(src, force);
+          if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
+        }
         if (tgt !== 'fastapi') {
           await ensureChatsLoaded(tgt, force);
           if (flowModalSession !== localModalSession || chatsLoadSession !== localLoadSession) return;
@@ -2517,6 +2519,7 @@ docker compose -f docker-compose.signal.yml up -d</div>
     async function refreshChatsForSide(side) {
       const src = document.getElementById('flowSourcePlatform')?.value || 'whatsapp';
       const tgt = document.getElementById('flowTargetPlatform')?.value || 'fastapi';
+      if (side === 'source' && src === 'http') return; // HTTP Push has no source chats
       if (side === 'source') {
         setFlowStatusFor('source', 'loading', platformLoadingMessage(src));
         try {
