@@ -1132,15 +1132,17 @@ function mergeAddons(incoming, existing) {
 
 function validateAutomation(f, allFlows, excludeId) {
   if (!f.name) return 'Вкажіть назву автоматизації';
+  const p = inferPlatforms(f);
   const hasSourceKey = String(f.sourceChatKey || '').trim().length > 0;
-  if ((!f.sourceChatIds || f.sourceChatIds.length === 0) && !hasSourceKey) {
+  // HTTP Push flows have no source chats — skip this check.
+  if (p.sourcePlatform !== 'http' && (!f.sourceChatIds || f.sourceChatIds.length === 0) && !hasSourceKey) {
     return 'Оберіть хоча б один чат-джерело';
   }
-  const p = inferPlatforms(f);
   if (p.targetPlatform === 'whatsapp' || p.targetPlatform === 'signal') {
     const tid = String(f.targetChatId || '').trim();
     if (!tid) return 'Оберіть цільовий чат для обраного напрямку';
-    if (f.sourceChatIds.some((sid) => sid === tid)) {
+    const srcIds = Array.isArray(f.sourceChatIds) ? f.sourceChatIds : [];
+    if (srcIds.some((sid) => sid === tid)) {
       return 'Цільовий чат не може збігатися з чатом-джерелом';
     }
   }
