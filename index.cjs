@@ -3698,7 +3698,7 @@ app.post('/api/push', async (req, res) => {
           state.counters.signalSent = (state.counters.signalSent || 0) + 1;
         } else {
           // WhatsApp
-          if (!client || state.wa.status !== 'ready') {
+          if (!client || state.status !== 'ready') {
             throw new Error('WhatsApp client is not ready');
           }
           if (imageBase64) {
