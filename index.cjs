@@ -3668,59 +3668,172 @@ function startHeartbeat() {
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/push  — HTTP Push source
-// Accepts { text, image_base64 } from external services (e.g. FastAPI).
-// Routes to all active flows whose sourcePlatform === 'http'.
+// GET /api/push/accounts  — активні підключені акаунти
+// Повертає статус WhatsApp і Signal для зовнішніх сервісів.
 // ---------------------------------------------------------------------------
-app.post('/api/push', async (req, res) => {
+app.get('/api/push/accounts', (req, res) => {
+  const accounts = [];
+
+  // WhatsApp
+  const waPhone = state.clientInfo?.wid
+    ? '+' + String(state.clientInfo.wid).replace('@c.us', '').replace(/\D/g, '')
+    : null;
+  accounts.push({
+    platform: 'whatsapp',
+    connected: state.status === 'ready',
+    phone: waPhone,
+    name: state.clientInfo?.pushname || null
+  });
+
+  // Signal (лише якщо налаштований)
+  if (SIGNAL_API_URL) {
+    const sigPhone =
+      Array.isArray(state.signal.linkedAccounts) && state.signal.linkedAccounts.length > 0
+        ? String(state.signal.linkedAccounts[0])
+        : null;
+    accounts.push({
+      platform: 'signal',
+      connected: state.signal.linked === true,
+      phone: sigPhone
+    });
+  }
+
+  res.json({ ok: true, accounts });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/push/chats?platform=whatsapp|signal|all&refresh=0|1&only_groups=0|1
+// Повертає список доступних чатів для надсилання повідомлень.
+// За замовчуванням platform=all, only_groups=0 (всі чати).
+// ---------------------------------------------------------------------------
+app.get('/api/push/chats', async (req, res) => {
+  const platform = String(req.query.platform || 'all').trim();
+  const refresh = String(req.query.refresh || '').trim() === '1';
+  const onlyGroups = String(req.query.only_groups || '0') !== '0';
+
+  if (!['whatsapp', 'signal', 'all'].includes(platform)) {
+    return res.status(400).json({ ok: false, message: 'platform must be "whatsapp", "signal", or "all"' });
+  }
+
   try {
+    const result = {};
+
+    if (platform === 'whatsapp' || platform === 'all') {
+      if (state.status === 'ready' && client) {
+        try {
+          const chats = await client.getChats();
+          const list = chats
+            .filter((c) => !onlyGroups || String(c.id._serialized || '').endsWith('@g.us'))
+            .map((c) => ({
+              id: c.id._serialized,
+              name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized,
+              is_group: String(c.id._serialized || '').endsWith('@g.us')
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+          if (refresh) upsertChatDirectory('whatsapp', list);
+          result.whatsapp = { connected: true, chats: list };
+        } catch (e) {
+          const cached = (readMessengerChatsCache('whatsapp').chats || []).map((c) => ({
+            ...c, is_group: String(c.id || '').endsWith('@g.us')
+          }));
+          result.whatsapp = { connected: true, chats: cached, error: e.message };
+        }
+      } else {
+        const cached = (readMessengerChatsCache('whatsapp').chats || []).map((c) => ({
+          ...c, is_group: String(c.id || '').endsWith('@g.us')
+        }));
+        result.whatsapp = { connected: false, chats: cached };
+      }
+    }
+
+    if (platform === 'signal' || platform === 'all') {
+      if (SIGNAL_API_URL && state.signal.linked === true) {
+        try {
+          const list = await fetchSignalChats();
+          result.signal = {
+            connected: true,
+            chats: list.map((c) => ({
+              id: c.id,
+              name: c.name || c.id,
+              is_group: looksLikeSignalGroupId(c.id)
+            }))
+          };
+        } catch (e) {
+          const cached = (readMessengerChatsCache('signal').chats || []).map((c) => ({
+            ...c, is_group: looksLikeSignalGroupId(c.id || '')
+          }));
+          result.signal = { connected: true, chats: cached, error: e.message };
+        }
+      } else if (SIGNAL_API_URL) {
+        const cached = (readMessengerChatsCache('signal').chats || []).map((c) => ({
+          ...c, is_group: looksLikeSignalGroupId(c.id || '')
+        }));
+        result.signal = { connected: false, chats: cached };
+      }
+    }
+
+    // Один платформ — плоска відповідь; all — вкладені об'єкти
+    if (platform !== 'all') {
+      const p = result[platform] || { connected: false, chats: [] };
+      return res.json({ ok: true, platform, connected: p.connected, chats: p.chats, ...(p.error ? { error: p.error } : {}) });
+    }
+    res.json({ ok: true, platforms: result });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: error.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/push/send  — надіслати повідомлення безпосередньо в чат
+// Body: { platform, chat_id, text, image_base64? }
+// ---------------------------------------------------------------------------
+app.post('/api/push/send', async (req, res) => {
+  try {
+    const platform = String(req.body?.platform || '').trim();
+    const chatId = String(req.body?.chat_id || '').trim();
     const text = String(req.body?.text || '').trim();
     const imageBase64 = String(req.body?.image_base64 || '').trim();
+
+    if (!['whatsapp', 'signal'].includes(platform)) {
+      return res.status(400).json({ ok: false, message: 'platform must be "whatsapp" or "signal"' });
+    }
+    if (!chatId) {
+      return res.status(400).json({ ok: false, message: 'chat_id is required' });
+    }
     if (!text && !imageBase64) {
       return res.status(400).json({ ok: false, message: 'text or image_base64 is required' });
     }
-    const httpFlows = flows.filter((f) => !f.paused && inferPlatforms(f).sourcePlatform === 'http');
-    if (httpFlows.length === 0) {
-      return res.status(404).json({ ok: false, message: 'No active HTTP-Push flows configured. Add a flow with source=HTTP Push in the panel.' });
-    }
-    let sent = 0;
-    const errors = [];
-    for (const flow of httpFlows) {
-      const { targetPlatform } = inferPlatforms(flow);
-      const targetChatId = String(flow.targetChatId || '').trim();
-      if (!targetChatId) continue;
-      try {
-        if (targetPlatform === 'signal') {
-          const attachments = imageBase64
-            ? [`data:image/png;filename=map.png;base64,${imageBase64}`]
-            : [];
-          await sendSignalMessage(targetChatId, text, attachments);
-          state.counters.signalSent = (state.counters.signalSent || 0) + 1;
-        } else {
-          // WhatsApp
-          if (!client || state.status !== 'ready') {
-            throw new Error('WhatsApp client is not ready');
-          }
-          if (imageBase64) {
-            await sendMediaWithRateLimit(targetChatId, 'image/png', imageBase64, 'map.png', text || undefined);
-          } else {
-            await sendWithRateLimit(targetChatId, text);
-          }
-        }
-        sent++;
-        pushLog('INFO', 'HTTP Push sent', { flow: flow.name || flow.id, targetPlatform, targetChatId });
-      } catch (e) {
-        pushLog('ERROR', 'HTTP Push send failed', { flow: flow.name || flow.id, targetPlatform, targetChatId, error: e.message });
-        errors.push(`${flow.name || flow.id}: ${e.message}`);
+
+    if (platform === 'signal') {
+      if (!SIGNAL_API_URL) {
+        return res.status(503).json({ ok: false, message: 'Signal integration is not configured (SIGNAL_API_URL not set)' });
+      }
+      if (state.signal.linked !== true) {
+        return res.status(503).json({ ok: false, message: 'Signal is not connected. Link account first.' });
+      }
+      const attachments = imageBase64
+        ? [`data:image/png;filename=map.png;base64,${imageBase64}`]
+        : [];
+      await sendSignalMessage(chatId, text, attachments);
+      state.counters.signalSent = (state.counters.signalSent || 0) + 1;
+    } else {
+      // WhatsApp
+      if (!client || state.status !== 'ready') {
+        return res.status(503).json({ ok: false, message: 'WhatsApp client is not ready. Start the bot and complete QR login first.' });
+      }
+      if (imageBase64) {
+        await sendMediaWithRateLimit(chatId, 'image/png', imageBase64, 'map.png', text || undefined);
+      } else {
+        await sendWithRateLimit(chatId, text);
       }
     }
+
     state.lastSendAt = nowIso();
-    if (sent === 0 && errors.length > 0) {
-      return res.status(500).json({ ok: false, message: errors[0], errors });
-    }
-    res.json({ ok: true, sent, errors: errors.length ? errors : undefined });
+    pushLog('INFO', 'Direct push sent', { platform, chatId, hasImage: Boolean(imageBase64) });
+    res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ ok: false, message: error.message || String(error) });
+    pushLog('ERROR', 'Direct push failed', { error: error.message });
+    res.status(500).json({ ok: false, message: error.message });
   }
 });
 
