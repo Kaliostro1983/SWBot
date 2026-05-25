@@ -3724,23 +3724,28 @@ app.get('/api/push/chats', async (req, res) => {
           const chats = await client.getChats();
           const list = chats
             .filter((c) => !onlyGroups || String(c.id._serialized || '').endsWith('@g.us'))
-            .map((c) => ({
-              id: c.id._serialized,
-              name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized,
-              is_group: String(c.id._serialized || '').endsWith('@g.us')
-            }))
+            .map((c) => {
+              const isGroup = String(c.id._serialized || '').endsWith('@g.us');
+              return {
+                id: c.id._serialized,
+                name: (c.name && String(c.name).trim()) || c.id.user || c.id._serialized,
+                type: isGroup ? 'group' : 'contact'
+              };
+            })
             .sort((a, b) => a.name.localeCompare(b.name, 'uk'));
           if (refresh) upsertChatDirectory('whatsapp', list);
           result.whatsapp = { connected: true, chats: list };
         } catch (e) {
           const cached = (readMessengerChatsCache('whatsapp').chats || []).map((c) => ({
-            ...c, is_group: String(c.id || '').endsWith('@g.us')
+            id: c.id, name: c.name,
+            type: String(c.id || '').endsWith('@g.us') ? 'group' : 'contact'
           }));
           result.whatsapp = { connected: true, chats: cached, error: e.message };
         }
       } else {
         const cached = (readMessengerChatsCache('whatsapp').chats || []).map((c) => ({
-          ...c, is_group: String(c.id || '').endsWith('@g.us')
+          id: c.id, name: c.name,
+          type: String(c.id || '').endsWith('@g.us') ? 'group' : 'contact'
         }));
         result.whatsapp = { connected: false, chats: cached };
       }
@@ -3755,18 +3760,20 @@ app.get('/api/push/chats', async (req, res) => {
             chats: list.map((c) => ({
               id: c.id,
               name: c.name || c.id,
-              is_group: looksLikeSignalGroupId(c.id)
+              type: looksLikeSignalGroupId(c.id) ? 'group' : 'contact'
             }))
           };
         } catch (e) {
           const cached = (readMessengerChatsCache('signal').chats || []).map((c) => ({
-            ...c, is_group: looksLikeSignalGroupId(c.id || '')
+            id: c.id, name: c.name,
+            type: looksLikeSignalGroupId(c.id || '') ? 'group' : 'contact'
           }));
           result.signal = { connected: true, chats: cached, error: e.message };
         }
       } else if (SIGNAL_API_URL) {
         const cached = (readMessengerChatsCache('signal').chats || []).map((c) => ({
-          ...c, is_group: looksLikeSignalGroupId(c.id || '')
+          id: c.id, name: c.name,
+          type: looksLikeSignalGroupId(c.id || '') ? 'group' : 'contact'
         }));
         result.signal = { connected: false, chats: cached };
       }
