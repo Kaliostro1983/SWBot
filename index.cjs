@@ -53,6 +53,47 @@ const SIGNAL_RAW_LOG_FILE = path.join(LOG_DIR, 'signal_raw.ndjson');
 const HEALTH_FILE = path.join(LOG_DIR, 'health.json');
 const AUTH_DIR = path.join(ROOT_DIR, '.wwebjs_auth');
 const CACHE_DIR = path.join(ROOT_DIR, '.wwebjs_cache');
+const SIGNAL_COMPOSE_FILE = 'docker-compose.signal.yml';
+
+// Описує середовище, у якому фактично запущено сервіс, щоб панель могла
+// згенерувати інструкцію перезапуску Docker під потрібну ОС і шлях до проєкту
+// (замість захардкодженого Windows/Docker Desktop тексту в UI).
+function detectOsFamily() {
+  switch (process.platform) {
+    case 'win32':
+      return 'windows';
+    case 'darwin':
+      return 'mac';
+    case 'linux':
+      return 'linux';
+    default:
+      return 'unknown';
+  }
+}
+
+function getEnvironmentInfo() {
+  const os = detectOsFamily();
+  // Docker Desktop існує лише на Windows/macOS; на Linux це системна служба docker.
+  const isDesktop = os === 'windows' || os === 'mac';
+  const projectDir = ROOT_DIR;
+  // Сервіс на сервері працює під користувачем у групі docker — sudo для docker не потрібен.
+  const cdCmd = `cd "${projectDir}"`;
+  const composeUp = `docker compose -f ${SIGNAL_COMPOSE_FILE} up -d`;
+  return {
+    os,
+    platform: process.platform,
+    isDesktop,
+    projectDir,
+    composeFile: SIGNAL_COMPOSE_FILE,
+    dockerLabel: isDesktop ? 'Docker Desktop' : 'Docker',
+    // Команда перевірки стану Docker: на Linux — systemctl; на Desktop керування через трей.
+    checkDockerCmd: isDesktop ? null : 'systemctl status docker --no-pager',
+    restartDockerCmd: isDesktop ? null : 'sudo systemctl restart docker',
+    startContainersCmd: `${cdCmd}\n${composeUp}`,
+    restartApiCmd: 'docker restart signal-cli-api',
+    stopExtraCmd: 'docker stop swapp-signal'
+  };
+}
 
 /**
  * 1. Вбиває orphaned Chrome-процеси що тримають наш профіль wwebjs_auth
@@ -1756,6 +1797,7 @@ function getPublicState() {
       targetChatDefault: TARGET_CHAT || null
     },
     signal: state.signal,
+    env: getEnvironmentInfo(),
     version: APP_VERSION
   };
 }
