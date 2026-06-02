@@ -1,6 +1,6 @@
 # Статус проєкту та план робіт
 
-Оновлено: 2026-03-24
+Оновлено: 2026-06-02
 
 Поточна версія збірки: **1.5** (`VERSION`, узгоджено з `package.json` **1.5.0**).
 
@@ -17,9 +17,31 @@
   - вкладка `Signal` з кнопкою `Увійти (QR)` і локальною debug-консоллю.
 - Інфраструктура Signal:
   - `docker-compose.signal.yml`,
-  - `signal-bridge` (`/health`, `/chats`, `/messages`, `/send`, `/link`).
+  - `signal-bridge` (`/health`, `/chats`, `/messages`, `/send`, `/link`, `/linked`).
+- Етап 6: **Push API** для зворотного напрямку ГОІ → чат **без автоматизації** — `GET /api/push/accounts`, `GET /api/push/chats`, `POST /api/push/send` (текст + зображення). Контракт: `docs/PUSH_API.md`. *(Старий підхід через flow з `sourcePlatform: 'http'` замінено на прямий API.)*
+- Етап 7: надійність і операційні фічі:
+  - Signal → WhatsApp пересилання вкладень (зображення).
+  - Сторінка **Моніторинг** (зведення активності по платформах, кольори Signal/WA, UTC+3).
+  - **Addon-система** в автоматизаціях: вимірювач затримки (`delayMeter`) і контроль пропущених повідомлень (`missingMessages`).
+  - Незалежний start/stop WhatsApp і Signal; зміна WhatsApp-акаунта; watchdog зависань WA.
+  - Надійність Chrome/Puppeteer (kill orphaned, graceful shutdown), захист від `ENOSPC`.
+  - Адмін-ендпоінти для виправлення aliases в chat-directory (`/api/admin/chat-directory/:key/...`).
+
+## Чотири напрямки сервісу (канонічна модель)
+
+1. **Signal ↔ WhatsApp** (будь-який напрямок) — через автоматизації (`flows.json`, `sourcePlatform`/`targetPlatform`).
+2. **Чат → ГОІ** (radio_63ombr / FastAPI RER) — через автоматизацію з `targetPlatform: fastapi` (`POST FASTAPI_URL`, див. `docs/FASTAPI_INGEST.md`).
+3. **ГОІ → чат** (зворотній) — **без автоматизації**, через Push API (`POST /api/push/send`); контракт `docs/PUSH_API.md`.
+
+## Що зроблено останнім (2026-06-02)
+
+- Інструкція перезапуску Docker у панелі (підказка при проблемах підключення Signal) більше не захардкоджена: бекенд віддає `env` у `/api/state` (ОС + `projectDir` + команди), а UI (`applyDockerEnvToHint`) рендерить її під фактичну ОС/шлях сервера.
+- Додано `reset_docker.sh` (корінь репо + `~/Desktop` на сервері) для ручного перезапуску Signal-контейнерів і бота.
+- Зафіксовано: на сервері `ocheret-63` `sudo -n` для systemctl недоступне — перезапуск сервісу через `pkill -f "node index.cjs"` (systemd `Restart=always`).
 
 ## Що робимо зараз
+
+> Примітка (2026-06-02): більшість пунктів нижче — це **вже впроваджена** робота над Signal-онбордингом і routing'ом (деталі та дати — у `docs/CHANGELOG.md`). Список лишається як довідка про поточну поведінку; активні відкриті задачі — у розділі «Що ще потрібно зробити».
 
 - Стабілізуємо Signal onboarding через QR-link у панелі.
 - Зафіксовано режим `bridge-first` для `POST /api/signal/link`: без автопереходу на `docker exec signal-cli link` за замовчуванням.

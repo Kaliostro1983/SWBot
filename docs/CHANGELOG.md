@@ -4,6 +4,58 @@
 
 ---
 
+## 2026-06-02 — Динамічна інструкція перезапуску Docker + reset_docker.sh
+
+- `index.cjs`: додано `getEnvironmentInfo()` (ОС, шлях до проєкту `ROOT_DIR`, compose-файл, OS-залежні docker-команди) і блок `env` у `GET /api/state` (`getPublicState`). Раніше інструкція по перезапуску Docker у панелі була захардкоджена під Windows/Docker Desktop зі застарілим шляхом `D:\Armor\whatsapp-bot`.
+- `public/index.html`: підказка `dockerHint` («Signal не підключається — перевірте Docker») тепер генерується з `state.env` — текст про Docker Desktop vs системний Docker та команда `cd "<шлях>" && docker compose -f docker-compose.signal.yml up -d` підставляються під фактичну ОС і шлях сервера (`applyDockerEnvToHint`).
+- Додано `reset_docker.sh` (LF, у корені репо) — перезапуск Signal-контейнерів з `docker-compose.signal.yml` + перезапуск бота через `pkill -f "node index.cjs"` (systemd `Restart=always` піднімає його без sudo). Викладено на робочий стіл сервера (`~/Desktop/reset_docker.sh`).
+- Інфраструктурна примітка: на `ocheret-63` passwordless sudo (`sudo -n`) для `systemctl` **недоступне** — деплой/перезапуск виконується через `pkill -f "node index.cjs"` (процес працює під `shaen`), а не `sudo systemctl restart swbot`.
+
+## 2026-05-22…25 — Push API: прямий зворотній канал ГОІ → чат (без автоматизації)
+
+- Додано HTTP Push API для зовнішнього сервісу (ГОІ/FastAPI): `GET /api/push/accounts` (підключені платформи + номер/ім'я), `GET /api/push/chats?platform=&refresh=&only_groups=` (список чатів з полем `type` = `group`/`contact`), `POST /api/push/send` (`{platform, chat_id, text, image_base64}` — текст і/або зображення). Документація: **`docs/PUSH_API.md`**.
+- Спочатку зворотній напрямок реалізовано як `POST /api/push` (HTTP Push як джерело-flow, `sourcePlatform: 'http'`), потім **замінено на прямий `/api/push/*` без автоматизації** — ГОІ сам шле в конкретний чат. Залишки `sourcePlatform: 'http'` у whitelist (`normalizeAutomation`/`validateAutomation`) — легасі від відкинутого підходу.
+- `index.cjs`: фікс перевірки готовності WhatsApp у push (`state.status`).
+
+## 2026-05-10…16 — Signal стабільність + delay meter
+
+- Addon `delayMeter`: чекбокс **«Додавати перехоплення»** (`includeCapture`) у вимірювачі затримки.
+- `chat-directory`: технічний `manualLabel` очищується, коли з'являється людська назва; поріг `isLikelyTechnicalName` знижено до 40 символів.
+- `signal-bridge`: назва групи береться також з `g.title` (Signal v2 групи).
+- Signal logout: перезапуск `signal-cli-api`, щоб receive-pipeline переініціалізувався після нового лінкування.
+
+## 2026-05-01…04 — Addon-система, моніторинг, розділення WhatsApp/Signal
+
+- **Addon-система** в автоматизаціях: `delayMeter` (поріг у секундах + чат для алертів) і `missingMessages` (два часові вікна `time1`/`time2` з лімітами хвилин) — поля `addons` у `flows.json`.
+- **Monitor**: Signal — синій, WhatsApp — зелений; час у UTC+3.
+- **WhatsApp account change**: окрема дія/бейджі (об'єднано з logout в одну операцію для WA і Signal).
+- **Розділення WA і Signal**: незалежний start/stop кожної платформи.
+- Watchdog для WA-стану `authenticated`, але ніколи `ready`.
+- Signal logout: очищення локальних даних `signal-cli` (`rm -rf .../data`) + перезапуск замість `unregister` (безпечніше для основного пристрою).
+- Захист від `ENOSPC`-краху: запис логів у `try/catch` + ліміти розміру.
+
+## 2026-04-28…30 — Chrome lifecycle, alias-pollution, Signal→WA вкладення
+
+- **Signal → WhatsApp пересилання вкладень** (зображення).
+- **Chrome/Puppeteer надійність**: вбивство orphaned-процесів за cmdline `wwebjs_auth` перед стартом, очищення локів, graceful SIGINT/SIGTERM, знищення Chrome у всіх error-path `startBot`, збереження сесії в `cleanupChromeLocks`.
+- **Alias-pollution фікси (Signal)**: особисті повідомлення більше не тригерять групові flow; групові записи не зливаються через спільні UUID/учасників і не-груповий alias; декодування double-encoded Signal group ID від `signal-cli-api`; авто-резолв `sourceChatKey` без ручного втручання.
+- **Адмін-ендпоінти для хірургії aliases**: `POST /api/admin/chat-directory/:key/clean-group-aliases`, `/remove-aliases`, `/set-label`.
+- Чати в модалці: без авто-фетчу при відкритті, миттєва віддача з кешу (stale).
+- `.env` завантажується відносно `__dirname`, а не `process.cwd()`; `flows.json`, `panel-auth.json`, `.claude/` додано в `.gitignore` (per-machine дані); QR-flow відкривається, коли Signal ще не linked.
+
+## 2026-04-16…23 — Monitor + Docker hint + затримка підключення
+
+- Додано сторінку **Моніторинг** (`view-monitor`) з посекундним зведенням активності по платформах.
+- **Docker troubleshoot hint**: підказка при `connecting` Signal > 60 с; розумне розрізнення `timeout` vs `ECONNREFUSED` + порада зупинити конфліктний контейнер. *(2026-06-02 цю інструкцію зроблено динамічною — див. запис зверху.)*
+- Виправлено 5-хвилинну затримку підключення Signal при «теплому» Docker.
+- Фікс подвійного спрацювання паузи flow; решта `alert()` замінено.
+
+## 2026-03-30 — Інсталятори та Docker (Windows)
+
+- `install.bat` / `update.bat`: фікс кодування (ASCII), пропуск завантаження браузера Puppeteer, `npm install --no-audit` (коректний exit code).
+- `setup_docker.bat`: прибрано `chcp`, примусове видалення старих контейнерів перед стартом.
+- `signal-cli-api`: прибрано зовнішній порт `8080` з контейнера.
+
 ## 2026-03-26 — Signal chat refresh: таймаут `/chats` + статус результату в модалці
 
 - `index.cjs`: для `fetchSignalChats()` додано окремий конфігурований таймаут `SIGNAL_CHATS_TIMEOUT_MS` (default 90000), щоб `GET /api/signal/chats/refresh` рідше падав на повільному bridge.

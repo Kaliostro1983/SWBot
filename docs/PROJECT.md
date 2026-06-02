@@ -57,9 +57,17 @@ Node.js-бот на базі **whatsapp-web.js** (Puppeteer/Chromium): слух�
 
 Залежності (основні): `whatsapp-web.js`, `express`, `axios`, `dotenv`, `qrcode`.
 
-**HTTP API (фрагмент):** `GET /api/state`, `GET /api/logs`, `GET /api/events` (SSE), `POST /api/login|start|stop|logout|reset-session`, `GET /api/chats` (за замовчуванням — **Chat Directory** для UI; `?live=1` — live WA клієнт / Signal bridge з `id`/`name`), `GET /api/chat-directory/recent`, `GET /api/chat-directory/resolve-source`, `GET/POST/PUT/DELETE /api/flows`.
+**HTTP API (фрагмент):**
+- Стан/логи: `GET /api/state` (включає блок `env`: ОС, шлях до проєкту, docker-команди), `GET /api/logs`, `GET /api/events` (SSE).
+- WhatsApp: `POST /api/login|start|stop|logout|reset-session`.
+- Signal: `POST /api/signal/start|logout|link`, `GET /api/signal/linked-check`, `GET /api/signal/chats/refresh`.
+- Чати/каталог: `GET /api/chats` (за замовч. — **Chat Directory** для UI; `?live=1` — live WA/Signal bridge), `GET /api/messenger-chats`, `GET /api/chat-directory/recent`, `GET /api/chat-directory/resolve-source`, `POST /api/admin/chat-directory/:key/{clean-group-aliases|remove-aliases|set-label}`.
+- Автоматизації: `GET/POST/PUT/DELETE /api/flows`, `POST /api/flows/:id/{duplicate|pause}`.
+- **Push API (зовнішній сервіс ГОІ → чат, без автоматизації):** `GET /api/push/accounts`, `GET /api/push/chats`, `POST /api/push/send`. Контракт — **`docs/PUSH_API.md`**.
 
-**Інжест у FastAPI (RER):** узгодження полів бота з бекендом — **`docs/FASTAPI_INGEST.md`**; канонічний опис API — у сусідньому репозиторії **`radio_63ombr/docs/BOT_INGEST_API.md`**.
+**Напрямки маршрутизації:** (1) Signal ↔ WhatsApp та (2) чат → FastAPI/ГОІ — через **автоматизації** (`flows.json`); (3) ГОІ → чат — **без автоматизації**, через Push API.
+
+**Інжест у FastAPI (RER):** узгодження полів бота з бекендом — **`docs/FASTAPI_INGEST.md`**; канонічний опис API — у сусідньому репозиторії **`radio_63ombr/docs/BOT_INGEST_API.md`**. Зворотній напрямок (ГОІ → чат) — **`docs/PUSH_API.md`**.
 
 **Signal (Docker bridge):** покроковий запуск, лінкування QR та діагностика — **`docs/README-SIGNAL.md`**.
 
