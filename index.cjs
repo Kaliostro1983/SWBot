@@ -3072,15 +3072,13 @@ async function pollSignalMessages() {
     );
     state.signal.lastPollAt = nowIso();
     signalLastPollTs = Date.now();
+    let skippedSeenCount = 0;
     for (const m of msgs) {
       if (signalSeenMessageIds.has(m.id)) {
-        pushLogThrottled(
-          `signal_msg_skip_seen_${m.id}`,
-          10000,
-          'INFO',
-          'Signal message skipped before routing',
-          { reason: 'already_seen_message_id', messageId: m.id || null, chatId: m.chatId || null }
-        );
+        // Рахуємо, але не логуємо кожен пропуск окремо — overlap-буфер повертає
+        // повідомлення повторно на кожному поллінгу, тому окремий лог на кожний messageId
+        // перевантажував би monitor. Зведений підсумок виводиться раз на хвилину нижче.
+        skippedSeenCount++;
         continue;
       }
       signalSeenMessageIds.add(m.id);
@@ -3089,6 +3087,17 @@ async function pollSignalMessages() {
         signalSeenMessageIds.delete(first);
       }
       await processSignalIncomingMessage(m);
+    }
+    // Зведений лог для пропущених дублікатів (overlap-буфер): раз на хвилину,
+    // щоб monitor не заповнювався шумом, але інформація про роботу деdup була видна.
+    if (skippedSeenCount > 0) {
+      pushLogThrottled(
+        'signal_overlap_dedup_summary',
+        60000,
+        'INFO',
+        'Signal overlap dedup',
+        { skippedAlreadySeen: skippedSeenCount, overlapMs: SIGNAL_POLL_OVERLAP_MS }
+      );
     }
   } catch (error) {
     state.signal.lastErrorAt = nowIso();
