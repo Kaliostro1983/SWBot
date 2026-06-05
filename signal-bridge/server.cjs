@@ -8,6 +8,22 @@ const SIGNAL_RECEIVE_TIMEOUT_SEC = Number(process.env.SIGNAL_RECEIVE_TIMEOUT_SEC
 const SIGNAL_API_SLOW_TIMEOUT_MS = Math.max(30000, Number(process.env.SIGNAL_API_SLOW_TIMEOUT_MS || 90000));
 const SIGNAL_INCLUDE_TECHNICAL_IDS = String(process.env.SIGNAL_INCLUDE_TECHNICAL_IDS || '0').trim() === '1';
 const ACCOUNT_CACHE_TTL_MS = 30000;
+// Буфер останніх повідомлень — дозволяє боту запитувати з перекриттям (?since=T-overlap)
+// і не пропускати повідомлення, які надійшли із затримкою або трохи поза вікном останнього опитування.
+const BUFFER_RETENTION_MS = 5 * 60 * 1000; // 5 хвилин
+const messageBuffer = []; // [{receivedAt: number, msg: object}]
+
+function bufferNewMessages(messages) {
+  const now = Date.now();
+  for (const m of messages) {
+    messageBuffer.push({ receivedAt: now, msg: m });
+  }
+  // Видаляємо записи старші за retention вікно
+  const cutoff = now - BUFFER_RETENTION_MS;
+  while (messageBuffer.length > 0 && messageBuffer[0].receivedAt < cutoff) {
+    messageBuffer.shift();
+  }
+}
 
 if (!SIGNAL_ACCOUNT_NUMBER) {
   // eslint-disable-next-line no-console
@@ -281,8 +297,13 @@ app.get('/chats', async (_req, res) => {
   }
 });
 
-app.get('/messages', async (_req, res) => {
+app.get('/messages', async (req, res) => {
   try {
+    // since — мітка часу (ms з епохи), яку передає бот. Якщо передано,
+    // повертаємо всі повідомлення з буфера де receivedAt >= since,
+    // включно зі щойно отриманими (це і є overlap: бот передає sinceTs - OVERLAP_MS).
+    const since = Number(req.query.since || 0) || 0;
+
     const account = await resolveAccount();
     const apiRes = await axios.get(
       `${baseUrl()}/v1/receive/${encodeURIComponent(account)}`,
@@ -291,7 +312,18 @@ app.get('/messages', async (_req, res) => {
         timeout: SIGNAL_API_SLOW_TIMEOUT_MS
       }
     );
-    const messages = normalizeIncomingMessages(apiRes.data);
+    const fresh = normalizeIncomingMessages(apiRes.data);
+    // Зберігаємо нові повідомлення в буфер (незалежно від since)
+    bufferNewMessages(fresh);
+
+    // Якщо since задано — повертаємо з буфера все з вікна [since, ...],
+    // щоб бот міг підхопити повідомлення з перекриттям.
+    // Дедуплікація на стороні бота (signalSeenMessageIds).
+    // Якщо since не задано — лише щойно отримані.
+    const messages = since
+      ? messageBuffer.filter((e) => e.receivedAt >= since).map((e) => e.msg)
+      : fresh;
+
     res.json({ ok: true, messages });
   } catch (error) {
     const status = error?.response?.status || 500;

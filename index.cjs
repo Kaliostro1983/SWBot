@@ -44,6 +44,10 @@ const WA_LAUNCH_TIMEOUT_MS = Math.max(30000, Number(process.env.WA_LAUNCH_TIMEOU
 const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TIMEOUT_MS || 180000));
 const SIGNAL_RAW_CAPTURE = String(process.env.SIGNAL_RAW_CAPTURE || '0').trim() === '1';
 const DEBUG_ROUTING = String(process.env.DEBUG_ROUTING || '0').trim() === '1';
+// Перекриття вікна опитування Signal (мс): sinceTs зсувається назад на цей час,
+// щоб підхоплювати повідомлення, які надійшли на bridge із короткою затримкою.
+// Bridge зберігає буфер на 5 хв; дублікати усуває signalSeenMessageIds.
+const SIGNAL_POLL_OVERLAP_MS = Math.max(0, Number(process.env.SIGNAL_POLL_OVERLAP_MS || 60000));
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -3040,7 +3044,7 @@ async function pollSignalMessages() {
     5000,
     'INFO',
     'Signal poll start',
-    { endpoint: '/messages', sinceTs: signalLastPollTs || 0 }
+    { endpoint: '/messages', sinceTs: signalLastPollTs ? signalLastPollTs - SIGNAL_POLL_OVERLAP_MS : 0 }
   );
   // Do not hammer /messages until account is linked.
   if (state.signal.linked !== true) {
@@ -3053,7 +3057,8 @@ async function pollSignalMessages() {
     return;
   }
   try {
-    const msgs = await fetchSignalMessages(signalLastPollTs || 0);
+    const effectiveSince = signalLastPollTs ? signalLastPollTs - SIGNAL_POLL_OVERLAP_MS : 0;
+    const msgs = await fetchSignalMessages(effectiveSince);
     pushLogThrottled(
       'signal_poll_success',
       5000,
