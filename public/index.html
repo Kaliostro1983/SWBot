@@ -3370,6 +3370,9 @@ docker compose -f docker-compose.signal.yml up -d</div>
         sourceSearch.addEventListener('input', () => {
           renderSourcePicker();
         });
+        sourceSearch.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') e.preventDefault();
+        });
         sourceSearch.addEventListener('focus', () => {
           document.getElementById('flowSourcesDropdown')?.classList.add('open');
         });
@@ -3381,6 +3384,9 @@ docker compose -f docker-compose.signal.yml up -d</div>
       if (targetSearch) {
         targetSearch.addEventListener('input', () => {
           renderTargetPicker();
+        });
+        targetSearch.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') e.preventDefault();
         });
         targetSearch.addEventListener('focus', () => {
           document.getElementById('flowTargetDropdown')?.classList.add('open');
