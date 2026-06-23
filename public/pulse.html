@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SWBot · Пульс</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      min-width: 270px;
+      user-select: none;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .widget {
+      padding: 14px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      transition: border-color .3s;
+    }
+    .widget.state-warn {
+      border-color: #d29922;
+      animation: border-pulse-warn 1.4s ease-in-out infinite;
+    }
+    .widget.state-err {
+      border-color: #f85149;
+      animation: border-pulse-err 0.9s ease-in-out infinite;
+    }
+    @keyframes border-pulse-warn {
+      0%, 100% { box-shadow: 0 0 6px 0 rgba(210,153,34,.35); }
+      50%       { box-shadow: 0 0 18px 4px rgba(210,153,34,.15); }
+    }
+    @keyframes border-pulse-err {
+      0%, 100% { box-shadow: 0 0 8px 0 rgba(248,81,73,.45); }
+      50%       { box-shadow: 0 0 22px 6px rgba(248,81,73,.15); }
+    }
+
+    /* ── Alert banner ── */
+    .alert-banner {
+      display: none;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: .3px;
+    }
+    .alert-banner.warn {
+      display: block;
+      background: #2d2000;
+      color: #f0b429;
+      border: 1px solid #d29922;
+      animation: blink-warn 1.3s step-start infinite;
+    }
+    .alert-banner.err {
+      display: block;
+      background: #2d0d0d;
+      color: #ff6b6b;
+      border: 1px solid #f85149;
+      animation: blink-err 0.85s step-start infinite;
+    }
+    @keyframes blink-warn {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.35; }
+    }
+    @keyframes blink-err {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.2; }
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .main-dot-wrap {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+    .main-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #484f58;
+      transition: background 0.3s;
+    }
+    .main-dot.green  { background: #3fb950; }
+    .main-dot.yellow { background: #d29922; }
+    .main-dot.red    { background: #f85149; }
+
+    .main-dot-wrap::after {
+      content: '';
+      position: absolute;
+      inset: -5px;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .main-dot-wrap.pulse::after {
+      animation: ring .65s ease-out forwards;
+    }
+    @keyframes ring {
+      0%   { box-shadow: 0 0 0 0px rgba(63,185,80,.6); }
+      100% { box-shadow: 0 0 0 10px rgba(63,185,80,0); }
+    }
+    .main-dot-wrap.pulse-yellow::after {
+      animation: ring-y .65s ease-out forwards;
+    }
+    @keyframes ring-y {
+      0%   { box-shadow: 0 0 0 0px rgba(210,153,34,.6); }
+      100% { box-shadow: 0 0 0 10px rgba(210,153,34,0); }
+    }
+
+    .title   { font-weight: 700; font-size: 15px; letter-spacing: .3px; }
+    .version { font-size: 11px; color: #7d8590; }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 9px;
+      border-radius: 10px;
+      letter-spacing: .3px;
+    }
+    .badge-ok   { background: #132519; color: #3fb950; }
+    .badge-warn { background: #2d2000; color: #d29922; }
+    .badge-err  { background: #2d0d0d; color: #f85149; }
+    .badge-idle { background: #1c2128; color: #7d8590; }
+
+    hr { border: none; border-top: 1px solid #21262d; }
+
+    /* ── Platforms ── */
+    .platforms {
+      display: flex;
+      gap: 0;
+    }
+    .platform {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      flex: 1;
+    }
+    .platform + .platform {
+      padding-left: 14px;
+      border-left: 1px solid #21262d;
+    }
+    .pdot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #484f58;
+      margin-top: 3px;
+      transition: background 0.3s;
+    }
+    .pdot.green  { background: #3fb950; }
+    .pdot.yellow { background: #d29922; }
+    .pdot.red    { background: #f85149; }
+
+    .plat-info { display: flex; flex-direction: column; gap: 1px; }
+    .plabel    { color: #7d8590; font-size: 12px; }
+    .pval      { color: #c9d1d9; font-size: 12px; }
+    .psub {
+      font-size: 10px;
+      color: #484f58;
+      transition: color .3s;
+    }
+    .psub.warn   { color: #d29922; }
+    .psub.silent { color: #f85149; }
+
+    /* ── Stats ── */
+    .stats { display: flex; gap: 0; }
+    .stat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+    .stat + .stat { border-left: 1px solid #21262d; }
+    .sval {
+      font-size: 22px;
+      font-weight: 700;
+      color: #e6edf3;
+      line-height: 1;
+      transition: color 0.3s;
+    }
+    .sval.err { color: #f85149; }
+    .slabel {
+      font-size: 10px;
+      color: #7d8590;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+
+    /* ── Last activity ── */
+    .last-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 10px;
+      background: #161b22;
+      border-radius: 6px;
+    }
+    .last-label { color: #7d8590; font-size: 12px; }
+    .last-val   { font-size: 12px; color: #8b949e; transition: color .3s; }
+    .last-val.fresh { color: #3fb950; }
+
+    /* ── Offline banner ── */
+    .offline {
+      display: none;
+      text-align: center;
+      padding: 6px 8px;
+      background: #2d0d0d;
+      color: #f85149;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+    .offline.show { display: block; }
+
+    /* ── Footer ── */
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #484f58;
+    }
+    .sse-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #484f58;
+      margin-right: 4px;
+      vertical-align: middle;
+      transition: background .3s;
+    }
+    .sse-dot.live { background: #3fb950; }
+    .footer a:hover { color: #8b949e; }
+  </style>
+</head>
+<body>
+<div class="widget" id="widget">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="main-dot-wrap" id="dotWrap">
+        <div class="main-dot" id="mainDot"></div>
+      </div>
+      <span class="title">SWBot</span>
+      <span class="version" id="ver"></span>
+    </div>
+    <span class="badge badge-idle" id="badge">—</span>
+  </div>
+
+  <!-- Alert banner — visible only when status ≠ OK -->
+  <div class="alert-banner" id="alertBanner"></div>
+
+  <hr>
+
+  <!-- Platforms -->
+  <div class="platforms">
+    <div class="platform">
+      <div class="pdot" id="waDot"></div>
+      <div class="plat-info">
+        <span class="plabel">WhatsApp</span>
+        <span class="pval" id="waVal">…</span>
+      </div>
+    </div>
+    <div class="platform">
+      <div class="pdot" id="sigDot"></div>
+      <div class="plat-info">
+        <span class="plabel">Signal</span>
+        <span class="pval" id="sigVal">…</span>
+        <span class="psub" id="sigLast"></span>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <span class="sval" id="statSent">—</span>
+      <span class="slabel">Надіслано</span>
+    </div>
+    <div class="stat">
+      <span class="sval" id="statRecv">—</span>
+      <span class="slabel">Отримано</span>
+    </div>
+    <div class="stat">
+      <span class="sval" id="statErr">—</span>
+      <span class="slabel">Помилки</span>
+    </div>
+  </div>
+
+  <!-- Last activity -->
+  <div class="last-row">
+    <span class="last-label">Остання активність</span>
+    <span class="last-val" id="lastAct">—</span>
+  </div>
+
+  <!-- Offline -->
+  <div class="offline" id="offline">⚠ Зв'язок з ботом втрачено</div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <span><span class="sse-dot" id="sseDot"></span>SSE</span>
+    <a href="/" title="Відкрити панель">Панель ↗</a>
+  </div>
+
+</div>
+<script>
+/* ── helpers ── */
+function ago(iso) {
+  if (!iso) return null;
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (d < 0)    return 'щойно';
+  if (d < 60)   return d + ' сек тому';
+  if (d < 3600) return Math.floor(d / 60) + ' хв тому';
+  if (d < 86400)return Math.floor(d / 3600) + ' год тому';
+  return Math.floor(d / 86400) + ' дн тому';
+}
+function secsSince(iso) {
+  if (!iso) return Infinity;
+  return (Date.now() - new Date(iso).getTime()) / 1000;
+}
+function setDot(id, color) {
+  document.getElementById(id).className = 'pdot' + (color ? ' ' + color : '');
+}
+
+/* ── pulse animation ── */
+let pulseTimer = null;
+function triggerPulse(color) {
+  const w = document.getElementById('dotWrap');
+  w.classList.remove('pulse', 'pulse-yellow');
+  void w.offsetWidth;
+  w.classList.add(color === 'yellow' ? 'pulse-yellow' : 'pulse');
+  clearTimeout(pulseTimer);
+  pulseTimer = setTimeout(() => w.classList.remove('pulse', 'pulse-yellow'), 700);
+}
+
+/* ── state ── */
+let lastState = null;
+let lastActivityTs = null;
+let sseOk = false;
+
+const SIG_WARN_S   = 3  * 60; // 3 min → yellow
+const SIG_SILENT_S = 10 * 60; // 10 min → red
+
+/* ── Alert banner + widget border ── */
+function setAlert(level, text) {
+  const banner = document.getElementById('alertBanner');
+  const widget = document.getElementById('widget');
+  if (level === 'ok') {
+    banner.className = 'alert-banner';
+    banner.textContent = '';
+    widget.className = 'widget';
+    document.title = 'SWBot · Пульс';
+  } else if (level === 'warn') {
+    banner.className = 'alert-banner warn';
+    banner.textContent = '⚠ ' + text;
+    widget.className = 'widget state-warn';
+    document.title = '⚠ ' + text + ' — SWBot';
+  } else {
+    banner.className = 'alert-banner err';
+    banner.textContent = '✕ ' + text;
+    widget.className = 'widget state-err';
+    document.title = '✕ ' + text + ' — SWBot';
+  }
+}
+
+function render(s) {
+  const prev = lastState;
+  lastState = s;
+
+  document.getElementById('ver').textContent = s.version ? 'v' + s.version : '';
+
+  /* ── WhatsApp ── */
+  const waReady = s.ready === true;
+  const waAuth  = s.authenticated === true;
+  let waColor, waText;
+  if (waReady) {
+    waColor = 'green'; waText = 'готово';
+  } else if (waAuth || (s.status && s.status !== 'idle' && s.status !== 'stopped')) {
+    waColor = 'yellow';
+    const m = { initializing: 'ініц.', authenticated: 'підкл.', loading: 'завант.' };
+    waText = m[s.status] || s.status || 'підкл.';
+  } else {
+    waColor = 'grey'; waText = 'офлайн';
+  }
+  setDot('waDot', waColor);
+  document.getElementById('waVal').textContent = waText;
+
+  /* ── Signal ── */
+  const sig = s.signal || {};
+  let sigColor, sigText;
+  if (!sig.enabled) {
+    sigColor = 'grey'; sigText = 'вимк.';
+  } else if (sig.linked === true) {
+    sigColor = 'green'; sigText = 'онлайн';
+  } else if (sig.running) {
+    sigColor = 'yellow'; sigText = 'перевірка';
+  } else {
+    sigColor = 'red'; sigText = 'відкл.';
+  }
+  setDot('sigDot', sigColor);
+  document.getElementById('sigVal').textContent = sigText;
+
+  const sigLastEl = document.getElementById('sigLast');
+  if (sig.enabled && sig.linked === true) {
+    const lastMsgTs = sig.lastMessageReceivedAt;
+    if (!lastMsgTs) {
+      sigLastEl.textContent = 'повідомлень ще не було';
+      sigLastEl.className = 'psub';
+    } else {
+      const sil = secsSince(lastMsgTs);
+      let cls = 'psub';
+      if (sil > SIG_SILENT_S) cls = 'psub silent';
+      else if (sil > SIG_WARN_S)  cls = 'psub warn';
+      sigLastEl.textContent = 'повід.: ' + ago(lastMsgTs);
+      sigLastEl.className = cls;
+    }
+  } else {
+    sigLastEl.textContent = '';
+    sigLastEl.className = 'psub';
+  }
+
+  /* ── Overall badge + alert ── */
+  const mainDot = document.getElementById('mainDot');
+  const badge   = document.getElementById('badge');
+
+  const sigSilent = sig.enabled && sig.linked === true
+    && sig.lastMessageReceivedAt
+    && secsSince(sig.lastMessageReceivedAt) > SIG_WARN_S;
+
+  const allOk   = waReady && (!sig.enabled || sig.linked === true) && !sigSilent;
+  const anyWarn = !allOk && (waAuth || (sig.enabled && sig.running) || sigSilent);
+  let overallColor;
+
+  if (allOk) {
+    overallColor = 'green';
+    mainDot.className = 'main-dot green';
+    badge.className   = 'badge badge-ok';
+    badge.textContent = 'OK';
+    setAlert('ok', '');
+  } else if (anyWarn) {
+    overallColor = 'yellow';
+    mainDot.className = 'main-dot yellow';
+    badge.className   = 'badge badge-warn';
+    badge.textContent = 'УВАГА';
+    let reason = 'Перевірка з\'єднання';
+    if (sigSilent) {
+      const silMin = Math.floor(secsSince(sig.lastMessageReceivedAt) / 60);
+      reason = 'Signal мовчить ' + silMin + ' хв';
+    } else if (!waReady) {
+      reason = 'WhatsApp не готовий';
+    }
+    setAlert('warn', reason);
+  } else {
+    overallColor = 'red';
+    mainDot.className = 'main-dot red';
+    badge.className   = 'badge badge-err';
+    badge.textContent = 'ПОМИЛКА';
+    let reason = 'Критична помилка';
+    if (!waReady && waColor !== 'yellow') reason = 'WhatsApp відключено';
+    if (sig.enabled && !sig.running)      reason = 'Signal відключено';
+    setAlert('err', reason);
+  }
+
+  /* ── Counters ── */
+  const c = s.counters || {};
+  document.getElementById('statSent').textContent = c.sent ?? '—';
+  document.getElementById('statRecv').textContent = c.received ?? '—';
+  const errEl  = document.getElementById('statErr');
+  const errVal = c.errors ?? 0;
+  errEl.textContent = errVal;
+  errEl.className = 'sval' + (errVal > 0 ? ' err' : '');
+
+  const ts = s.lastSendAt || s.lastMessageAt || s.lastPostAt || s.lastPulseAt;
+  if (ts) lastActivityTs = ts;
+
+  if (prev && prev.counters) {
+    if ((c.sent || 0) > (prev.counters.sent || 0) ||
+        (c.received || 0) > (prev.counters.received || 0)) {
+      triggerPulse(overallColor);
+    }
+  }
+}
+
+/* ── Relative time ticker ── */
+setInterval(() => {
+  if (!lastState) return;
+  const el = document.getElementById('lastAct');
+  if (lastActivityTs) {
+    const s = secsSince(lastActivityTs);
+    el.textContent = ago(lastActivityTs);
+    el.className = 'last-val' + (s < 90 ? ' fresh' : '');
+  }
+  const sig = (lastState || {}).signal || {};
+  if (sig.enabled && sig.linked === true) {
+    const lastMsgTs = sig.lastMessageReceivedAt;
+    const sigLastEl = document.getElementById('sigLast');
+    if (lastMsgTs) {
+      const sil = secsSince(lastMsgTs);
+      let cls = 'psub';
+      if (sil > SIG_SILENT_S)      cls = 'psub silent';
+      else if (sil > SIG_WARN_S)   cls = 'psub warn';
+      sigLastEl.className = cls;
+      sigLastEl.textContent = 'повід.: ' + ago(lastMsgTs);
+
+      /* escalate badge and banner as silence grows */
+      const badge = document.getElementById('badge');
+      if (sil > SIG_WARN_S && badge.textContent === 'OK') {
+        document.getElementById('mainDot').className = 'main-dot yellow';
+        badge.className   = 'badge badge-warn';
+        badge.textContent = 'УВАГА';
+        const silMin = Math.floor(sil / 60);
+        setAlert('warn', 'Signal мовчить ' + silMin + ' хв');
+      } else if (sil > SIG_WARN_S && badge.textContent === 'УВАГА') {
+        /* keep banner reason text fresh */
+        const silMin = Math.floor(sil / 60);
+        const banner = document.getElementById('alertBanner');
+        banner.textContent = '⚠ Signal мовчить ' + silMin + ' хв';
+        document.title = '⚠ Signal мовчить ' + silMin + ' хв — SWBot';
+      }
+    }
+  }
+}, 1000);
+
+/* ── SSE ── */
+let evtSrc = null;
+let reconnTimer = null;
+
+function connectSSE() {
+  if (evtSrc) { try { evtSrc.close(); } catch {} evtSrc = null; }
+  clearTimeout(reconnTimer);
+  evtSrc = new EventSource('/api/events');
+
+  evtSrc.addEventListener('state', e => {
+    try {
+      sseOk = true;
+      document.getElementById('sseDot').className = 'sse-dot live';
+      document.getElementById('offline').className = 'offline';
+      render(JSON.parse(e.data));
+    } catch {}
+  });
+
+  evtSrc.addEventListener('log', e => {
+    try {
+      const entry = JSON.parse(e.data);
+      const txt = ((entry.label || '') + ' ' + (entry.message || '')).toLowerCase();
+      if (/sent|forward|надіслано/.test(txt)) triggerPulse('green');
+    } catch {}
+  });
+
+  evtSrc.onerror = () => {
+    sseOk = false;
+    document.getElementById('sseDot').className = 'sse-dot';
+    document.getElementById('offline').className = 'offline show';
+    try { evtSrc.close(); } catch {}
+    evtSrc = null;
+    reconnTimer = setTimeout(connectSSE, 6000);
+  };
+}
+
+async function pollRest() {
+  try {
+    const r = await fetch('/api/state');
+    if (r.ok) {
+      render(await r.json());
+      if (!sseOk) document.getElementById('offline').className = 'offline';
+    }
+  } catch {}
+}
+
+connectSSE();
+pollRest();
+setInterval(pollRest, 15000);
+</script>
+</body>
+</html>

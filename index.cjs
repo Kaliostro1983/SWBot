@@ -164,6 +164,10 @@ const PANEL_AUTH_FILE = path.join(DATA_DIR, 'panel-auth.json');
 const VERSION_FILE = path.join(ROOT_DIR, 'VERSION');
 const SIGNAL_CHATS_CACHE_FILE = path.join(DATA_DIR, 'signal-chats-cache.json');
 const WHATSAPP_CHATS_CACHE_FILE = path.join(DATA_DIR, 'whatsapp-chats-cache.json');
+// Персистентний кеш ID повідомлень Signal, які вже оброблено.
+// Зберігається між рестартами бота, щоб overlap-буфер bridge не спричиняв
+// повторного надсилання повідомлень, що були оброблені до рестарту.
+const SIGNAL_SEEN_IDS_FILE = path.join(DATA_DIR, 'signal-seen-ids.json');
 const MESSENGER_CHATS_CACHE_TTL_MS = Math.max(
   60_000,
   Number(process.env.MESSENGER_CHATS_CACHE_TTL_MS || 30 * 60 * 1000)
@@ -1407,6 +1411,7 @@ function panelAuthMiddleware(req, res, next) {
   }
   const p = req.path.split('?')[0];
   if (p === '/login.html') return next();
+  if (p === '/pulse.html') return next(); // read-only health widget — no auth required
   if (p === '/favicon.ico') return next();
   if (p === '/api/panel-auth/login' && req.method === 'POST') return next();
   if (p === '/api/panel-auth/logout' && req.method === 'POST') return next();
@@ -1560,7 +1565,10 @@ const state = {
     linked: null,
     linkedAccounts: [],
     lastLinkedCheckAt: null,
-    recentIncomingChats: []
+    recentIncomingChats: [],
+    // Час останнього реально отриманого повідомлення (не просто успішного poll).
+    // Якщо давно мовчить — може означати відключений сеанс або проблему зі стороною відправника.
+    lastMessageReceivedAt: null
   },
   activity: {
     lastMinute: {
@@ -2841,6 +2849,7 @@ async function processSignalIncomingMessage(message) {
 
   state.lastEventAt = nowIso();
   state.lastMessageAt = nowIso();
+  state.signal.lastMessageReceivedAt = nowIso();
   state.counters.received += 1;
   state.counters.signalReceived += 1;
 
@@ -3071,8 +3080,11 @@ async function pollSignalMessages() {
       }
     );
     state.signal.lastPollAt = nowIso();
+    state.signal.lastError = null;
+    state.signal.lastErrorAt = null;
     signalLastPollTs = Date.now();
     let skippedSeenCount = 0;
+    let newSeenCount = 0;
     for (const m of msgs) {
       if (signalSeenMessageIds.has(m.id)) {
         // Рахуємо, але не логуємо кожен пропуск окремо — overlap-буфер повертає
@@ -3082,11 +3094,17 @@ async function pollSignalMessages() {
         continue;
       }
       signalSeenMessageIds.add(m.id);
+      newSeenCount++;
       if (signalSeenMessageIds.size > 5000) {
         const first = signalSeenMessageIds.values().next().value;
         signalSeenMessageIds.delete(first);
       }
       await processSignalIncomingMessage(m);
+    }
+    // Зберігаємо seen-IDs на диск, щоб після рестарту бота overlap-буфер bridge
+    // не міг повторно надіслати вже оброблені повідомлення.
+    if (newSeenCount > 0) {
+      saveSignalSeenIds();
     }
     // Зведений лог для пропущених дублікатів (overlap-буфер): раз на хвилину,
     // щоб monitor не заповнювався шумом, але інформація про роботу деdup була видна.
@@ -3124,8 +3142,49 @@ async function pollSignalMessages() {
   }
 }
 
+/**
+ * Завантажує раніше збережені ID повідомлень Signal у signalSeenMessageIds.
+ * Викликається при старті воркера, щоб overlap-буфер bridge не міг повторно
+ * надіслати повідомлення, оброблені до рестарту бота.
+ */
+function loadSignalSeenIds() {
+  try {
+    if (!fs.existsSync(SIGNAL_SEEN_IDS_FILE)) return;
+    const raw = JSON.parse(fs.readFileSync(SIGNAL_SEEN_IDS_FILE, 'utf8'));
+    if (Array.isArray(raw.ids)) {
+      for (const id of raw.ids) {
+        signalSeenMessageIds.add(String(id));
+      }
+      pushLog('INFO', 'Signal seen IDs loaded from disk', { count: signalSeenMessageIds.size });
+    }
+  } catch (e) {
+    pushLog('WARN', 'Could not load signal seen IDs from disk', { error: e.message });
+  }
+}
+
+/**
+ * Зберігає поточний вміст signalSeenMessageIds на диск (до 5000 записів).
+ * Викликається після кожного poll-циклу, де з'явились нові повідомлення.
+ */
+function saveSignalSeenIds() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const ids = Array.from(signalSeenMessageIds);
+    fs.writeFileSync(
+      SIGNAL_SEEN_IDS_FILE,
+      JSON.stringify({ ids, savedAt: Date.now() }),
+      'utf8'
+    );
+  } catch (e) {
+    pushLog('WARN', 'Could not save signal seen IDs to disk', { error: e.message });
+  }
+}
+
 function startSignalWorker() {
   if (!SIGNAL_API_URL || signalPollTimer) return;
+  // Завантажуємо збережені seen-IDs ДО першого poll, щоб при рестарті бота
+  // overlap-буфер bridge не призводив до повторного надсилання вже оброблених повідомлень.
+  loadSignalSeenIds();
   state.signal.running = true;
   // Reset linked to null so the UI shows "checking" immediately on restart.
   state.signal.linked = null;

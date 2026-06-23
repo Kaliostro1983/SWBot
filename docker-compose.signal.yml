@@ -14,7 +14,7 @@ services:
     environment:
       # Вкажіть номер, який використовується в signal-cli.
       # Для кількох номерів можна додати через кому.
-      - MODE=normal
+      - MODE=json-rpc-native
     volumes:
       - signal_cli_data:/home/.local/share/signal-cli
 

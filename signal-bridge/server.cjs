@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const WebSocket = require('ws');
 
 const PORT = Number(process.env.PORT || 3002);
 const SIGNAL_CLI_BASE_URL = String(process.env.SIGNAL_CLI_BASE_URL || 'http://signal-cli-api:8080').trim();
@@ -13,6 +14,9 @@ const ACCOUNT_CACHE_TTL_MS = 30000;
 const BUFFER_RETENTION_MS = 5 * 60 * 1000; // 5 хвилин
 const messageBuffer = []; // [{receivedAt: number, msg: object}]
 
+// WebSocket receiver state (json-rpc-native mode)
+const wsState = { conn: null, connecting: false, retryTimer: null };
+
 function bufferNewMessages(messages) {
   const now = Date.now();
   for (const m of messages) {
@@ -23,6 +27,67 @@ function bufferNewMessages(messages) {
   while (messageBuffer.length > 0 && messageBuffer[0].receivedAt < cutoff) {
     messageBuffer.shift();
   }
+}
+
+function scheduleWsReconnect(delayMs) {
+  if (wsState.retryTimer) return;
+  wsState.retryTimer = setTimeout(() => {
+    wsState.retryTimer = null;
+    connectWebSocket();
+  }, delayMs);
+}
+
+async function connectWebSocket() {
+  if (wsState.connecting || wsState.conn?.readyState === WebSocket.OPEN) return;
+  wsState.connecting = true;
+  let account;
+  try {
+    account = await resolveAccount();
+  } catch (e) {
+    console.warn('[signal-bridge] WS: cannot resolve account yet:', e.message);
+    wsState.connecting = false;
+    scheduleWsReconnect(10000);
+    return;
+  }
+  const wsUrl = `${baseUrl().replace(/^https?/, 'ws')}/v1/receive/${encodeURIComponent(account)}`;
+  console.log(`[signal-bridge] WS connecting → ${wsUrl}`);
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    console.error('[signal-bridge] WS create error:', e.message);
+    wsState.connecting = false;
+    scheduleWsReconnect(5000);
+    return;
+  }
+  ws.on('open', () => {
+    console.log('[signal-bridge] WS connected');
+    wsState.conn = ws;
+    wsState.connecting = false;
+  });
+  ws.on('message', (data) => {
+    try {
+      const raw = JSON.parse(data.toString());
+      const arr = Array.isArray(raw) ? raw : [raw];
+      const msgs = normalizeIncomingMessages(arr);
+      if (msgs.length) bufferNewMessages(msgs);
+    } catch (e) {
+      console.error('[signal-bridge] WS message parse error:', e.message);
+    }
+  });
+  ws.on('close', (code) => {
+    console.warn(`[signal-bridge] WS closed (${code}), retry in 5s`);
+    wsState.conn = null;
+    wsState.connecting = false;
+    scheduleWsReconnect(5000);
+  });
+  ws.on('error', (e) => {
+    console.error('[signal-bridge] WS error:', e.message);
+    ws.terminate();
+    wsState.conn = null;
+    wsState.connecting = false;
+    scheduleWsReconnect(5000);
+  });
 }
 
 if (!SIGNAL_ACCOUNT_NUMBER) {
@@ -211,7 +276,8 @@ app.get('/health', (_req, res) => {
     ok: true,
     service: 'signal-bridge',
     signalCliBaseUrl: baseUrl(),
-    hasAccount: Boolean(SIGNAL_ACCOUNT_NUMBER)
+    hasAccount: Boolean(SIGNAL_ACCOUNT_NUMBER),
+    wsConnected: wsState.conn?.readyState === WebSocket.OPEN
   });
 });
 
@@ -297,42 +363,15 @@ app.get('/chats', async (_req, res) => {
   }
 });
 
-app.get('/messages', async (req, res) => {
-  try {
-    // since — мітка часу (ms з епохи), яку передає бот. Якщо передано,
-    // повертаємо всі повідомлення з буфера де receivedAt >= since,
-    // включно зі щойно отриманими (це і є overlap: бот передає sinceTs - OVERLAP_MS).
-    const since = Number(req.query.since || 0) || 0;
-
-    const account = await resolveAccount();
-    const apiRes = await axios.get(
-      `${baseUrl()}/v1/receive/${encodeURIComponent(account)}`,
-      {
-        params: { timeout: SIGNAL_RECEIVE_TIMEOUT_SEC },
-        timeout: SIGNAL_API_SLOW_TIMEOUT_MS
-      }
-    );
-    const fresh = normalizeIncomingMessages(apiRes.data);
-    // Зберігаємо нові повідомлення в буфер (незалежно від since)
-    bufferNewMessages(fresh);
-
-    // Якщо since задано — повертаємо з буфера все з вікна [since, ...],
-    // щоб бот міг підхопити повідомлення з перекриттям.
-    // Дедуплікація на стороні бота (signalSeenMessageIds).
-    // Якщо since не задано — лише щойно отримані.
-    const messages = since
-      ? messageBuffer.filter((e) => e.receivedAt >= since).map((e) => e.msg)
-      : fresh;
-
-    res.json({ ok: true, messages });
-  } catch (error) {
-    const status = error?.response?.status || 500;
-    res.status(status).json({
-      ok: false,
-      message: error.message,
-      body: error?.response?.data || null
-    });
-  }
+app.get('/messages', (req, res) => {
+  // Повідомлення надходять через WebSocket і буферизуються в реальному часі.
+  // Цей endpoint лише читає з буфера — ніяких HTTP-запитів до signal-cli-api.
+  const since = Number(req.query.since || 0) || 0;
+  const messages = since
+    ? messageBuffer.filter((e) => e.receivedAt >= since).map((e) => e.msg)
+    : messageBuffer.slice(-200).map((e) => e.msg);
+  const wsConnected = wsState.conn?.readyState === WebSocket.OPEN;
+  res.json({ ok: wsConnected, messages, wsConnected });
 });
 
 app.get('/attachment/:id', async (req, res) => {
@@ -425,4 +464,6 @@ app.post('/link', async (req, res) => {
 app.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[signal-bridge] listening on http://0.0.0.0:${PORT}`);
+  // Delay initial WS connect to allow signal-cli-api daemon to fully start
+  setTimeout(connectWebSocket, 5000);
 });
