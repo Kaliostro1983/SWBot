@@ -104,13 +104,37 @@ else
     sleep 5
 fi
 
-# --- 3. Start WhatsApp if not ready ---
-WA_READY=$(curl -sf $BOT_URL/api/state | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d.get('ready',''))" 2>/dev/null)
-if [ "$WA_READY" = "True" ]; then
-    log "WhatsApp already ready"
+# --- 3. Start WhatsApp — wait for it to become ready, retry on error ---
+# AUTO_START_BOT_ON_SERVICE_START=1 already called startBot() at process start,
+# so we wait up to 3 min for it to finish (ready/error/awaiting_qr),
+# then retry once if it ended in error state.
+log "Waiting for WhatsApp to initialize (up to 3 min)..."
+WA_STATUS=""
+for i in $(seq 1 36); do
+    WA_STATUS=$(curl -sf $BOT_URL/api/state | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null)
+    if [ "$WA_STATUS" = "ready" ] || [ "$WA_STATUS" = "awaiting_qr" ] || [ "$WA_STATUS" = "error" ]; then
+        log "WhatsApp status after ${i}x5s: $WA_STATUS"
+        break
+    fi
+    sleep 5
+done
+
+if [ "$WA_STATUS" = "ready" ]; then
+    log "WhatsApp ready — no action needed"
+elif [ "$WA_STATUS" = "awaiting_qr" ]; then
+    log "WhatsApp awaiting QR — user must scan at $BOT_URL"
+elif [ "$WA_STATUS" = "error" ]; then
+    log "WhatsApp in error state — retrying start..."
+    curl -sf -X POST $BOT_URL/api/start >> $LOG 2>&1
+    log "WhatsApp restart requested"
+    # Wait another 30s and log final status
+    sleep 30
+    WA_FINAL=$(curl -sf $BOT_URL/api/state | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null)
+    log "WhatsApp status after retry: $WA_FINAL"
 else
-    log "Starting WhatsApp..."
+    log "WhatsApp still initializing or unknown status ($WA_STATUS) — calling start just in case..."
     curl -sf -X POST $BOT_URL/api/start >> $LOG 2>&1
     log "WhatsApp start requested"
 fi
