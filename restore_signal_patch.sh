@@ -150,4 +150,29 @@ else
     log "Signal start requested"
 fi
 
+# --- 5. Ensure signal-cli daemon has account loaded ---
+# At boot the daemon can fail with AccountCheckException (network not ready yet).
+# The daemon runs but has no account loaded, so linked=False. Restart fixes it.
+SIG_LINKED=$(curl -sf $BOT_URL/api/state | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('signal',{}).get('linked',''))" 2>/dev/null)
+if [ "$SIG_LINKED" = "True" ]; then
+    log "Signal linked — OK"
+else
+    log "Signal not linked (AccountCheckException at boot?) — restarting signal-cli daemon..."
+    docker exec signal-cli-api supervisorctl restart signal-cli-json-rpc-1
+    log "Waiting for signal-cli to load account (up to 30s)..."
+    for i in $(seq 1 6); do
+        sleep 5
+        SIG_LINKED2=$(curl -sf $BOT_URL/api/state | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d.get('signal',{}).get('linked',''))" 2>/dev/null)
+        if [ "$SIG_LINKED2" = "True" ]; then
+            log "Signal linked after restart (attempt $i)"
+            break
+        fi
+    done
+    if [ "$SIG_LINKED2" != "True" ]; then
+        log "WARNING: Signal still not linked after restart — manual check required"
+    fi
+fi
+
 log "=== Restore complete ==="
