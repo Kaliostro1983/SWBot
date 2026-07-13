@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-07-13 — Оновлення signal-cli до 0.14.6 (фікс NullPointerException на serverGuid)
+
+- `cache/signal-cli-0.14.6.tar.gz`: завантажено і встановлено в контейнер `signal-cli-api`. Signal сервери змінили протокол (деякі конверти без `serverGuid`), що призводило до `NullPointerException` і блокувало прийом повідомлень. 0.14.6 вийшов 13.07.2026 саме з цим фіксом.
+- `restore_signal_patch.sh`: автоматично підхопить 0.14.6 при наступному рестарті (шукає найновіший файл у `cache/` через `sort -V | tail -1`).
+
+## 2026-07-13 — Автовідновлення Signal після boot: перезапуск демона при linked=False
+
+- `restore_signal_patch.sh`: новий крок 5 — якщо після старту `signal.linked=False` (AccountCheckException при раннього старті без мережі), скрипт перезапускає signal-cli daemon через `supervisorctl restart` і чекає до 30с відновлення.
+
 ## 2026-06-06 — Фікс дублікатів Signal при рестарті бота (persist signalSeenMessageIds)
 
 - `index.cjs`: `signalSeenMessageIds` тепер зберігається на диск (`data/signal-seen-ids.json`) та завантажується при старті Signal-воркера. Раніше після рестарту бота (через `pkill`) Set скидався, а bridge-буфер ще містив повідомлення з останніх 5 хвилин — при другому poll вони поверталися через `?since=T-60s` і повторно надсилалися у цільовий чат. Файл записується після кожного poll-циклу де з'явились нові повідомлення; max 5000 записів.
