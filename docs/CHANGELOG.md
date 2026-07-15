@@ -4,6 +4,11 @@
 
 ---
 
+## 2026-07-15 — Фікс завантаження медіа: downloadMediaSafe() обходить broken WA internal API
+
+- `index.cjs`: `msg.downloadMedia()` кидав `r` (та сама помилка Meta) через внутрішній виклик `msg.downloadMedia({downloadEvenIfExpensive:true})` у `Store.Msg` — Meta змінила протокол. Додана функція `downloadMediaSafe(msg)`: бере `directPath`, `mediaKey`, `encFilehash` безпосередньо з `msg._data` (Node.js сторона) і викликає `window.Store.DownloadManager.downloadAndMaybeDecrypt()` напряму, оминаючи `Store.Msg.get()` та broken resolver. Запасна конвертація base64 якщо `WWebJS.arrayBufferToBase64Async` теж кидає.
+- Замінено `msg.downloadMedia()` на `downloadMediaSafe(msg)` в `forwardWaToWa()` та `forwardWaToSignal()`.
+
 ## 2026-07-15 — Фікс WA→WA пересилання: setImmediate для виходу з event handler
 
 - `index.cjs`: `forwardWaToWa` та `forwardWaToSignal` тепер запускаються через `setImmediate()` замість прямого `await` всередині `message_create` event handler. `pupPage.evaluate()` (getChatById / chat.sendMessage / msg.downloadMedia) кидав внутрішню WA помилку `r` при виклику з обробника подій — Chrome ще обробляв CDP-подію вхідного повідомлення. `setImmediate` відкладає відправку до наступного тіку після виходу обробника, усуваючи race condition.

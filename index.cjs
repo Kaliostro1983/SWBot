@@ -2677,6 +2677,61 @@ async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption)
 }
 
 /**
+ * Download WA media without using msg.downloadMedia(), which calls
+ * window.WWebJS.getChatModel / msg.downloadMedia() internally and throws 'r'
+ * after Meta's protocol change (2026-07). Goes directly to DownloadManager
+ * using raw fields from msg._data, bypassing Store.Msg and the broken resolver.
+ */
+async function downloadMediaSafe(msg) {
+  const d = msg._data || {};
+  if (!d.directPath || !d.mediaKey) return null;
+
+  const raw = {
+    directPath:        d.directPath,
+    encFilehash:       d.encFilehash,
+    filehash:          d.filehash,
+    mediaKey:          d.mediaKey,
+    mediaKeyTimestamp: d.mediaKeyTimestamp,
+    type:              d.type,
+    mimetype:          d.mimetype,
+    filename:          d.filename
+  };
+
+  const result = await client.pupPage.evaluate(async (r) => {
+    const mockQpl = {
+      addAnnotations: function() { return this; },
+      addPoint:       function() { return this; }
+    };
+
+    const decrypted = await window.Store.DownloadManager.downloadAndMaybeDecrypt({
+      directPath:        r.directPath,
+      encFilehash:       r.encFilehash,
+      filehash:          r.filehash,
+      mediaKey:          r.mediaKey,
+      mediaKeyTimestamp: r.mediaKeyTimestamp,
+      type:              r.type,
+      signal:            (new AbortController).signal,
+      downloadQpl:       mockQpl
+    });
+
+    let data;
+    try {
+      data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
+    } catch (_) {
+      // Fallback if WWebJS helper is broken — manual base64 conversion
+      const bytes = new Uint8Array(decrypted);
+      let bin = '';
+      for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+      data = btoa(bin);
+    }
+
+    return { data, mimetype: r.mimetype, filename: r.filename };
+  }, raw);
+
+  return (result && result.data) ? result : null;
+}
+
+/**
  * WA → WhatsApp: текст і/або зображення (інші типи медіа — за потреби розширити).
  */
 async function forwardWaToWa(flow, msg) {
@@ -2690,7 +2745,7 @@ async function forwardWaToWa(flow, msg) {
 
   if (wantMedia) {
     try {
-      const dl = await msg.downloadMedia();
+      const dl = await downloadMediaSafe(msg);
       if (dl && dl.data) {
         await sendMediaWithRateLimit(
           target,
@@ -2729,7 +2784,7 @@ async function forwardWaToSignal(flow, msg) {
   const base64Attachments = [];
   if (flow.sendAttachments && msg.hasMedia) {
     try {
-      const media = await msg.downloadMedia();
+      const media = await downloadMediaSafe(msg);
       if (media?.data) {
         const mime = String(media.mimetype || 'application/octet-stream').trim();
         base64Attachments.push(`data:${mime};base64,${media.data}`);
