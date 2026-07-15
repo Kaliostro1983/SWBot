@@ -3467,7 +3467,10 @@ function attachClientEvents(instance) {
 
       const messageId = msg.id?._serialized || null;
       if (!messageId) {
-        pushLog('ERROR', 'Немає message_id для інжесту', { chatId });
+        // fromMe sync-back messages have no messageId — not an error, just skip.
+        if (!msg.fromMe) {
+          pushLog('WARN', 'Немає message_id для інжесту', { chatId });
+        }
         return;
       }
 
