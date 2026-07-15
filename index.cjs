@@ -2635,18 +2635,15 @@ function getChatId(msg) {
   return msg.fromMe ? msg.to : msg.from;
 }
 
-async function getWaChat(chatId) {
-  return client.getChatById(chatId);
-}
-
 async function sendWithRateLimit(chatId, text) {
   const waitMs = Math.max(0, SEND_DELAY_MS - (Date.now() - lastSendTs));
   if (waitMs > 0) {
     await sleep(waitMs);
   }
 
-  const chat = await getWaChat(chatId);
-  await chat.sendMessage(text);
+  // client.sendMessage uses getChat({getAsModel:false}) internally — avoids model
+  // serialization that throws error 'r' for some groups via getChatById.
+  await client.sendMessage(chatId, text);
 
   lastSendTs = Date.now();
   state.lastSendAt = nowIso();
@@ -2665,9 +2662,8 @@ async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption)
     await sleep(waitMs);
   }
 
-  const chat = await getWaChat(chatId);
   const media = new MessageMedia(mimetype, data, filename || undefined);
-  await chat.sendMessage(media, { caption: caption || undefined });
+  await client.sendMessage(chatId, media, { caption: caption || undefined });
 
   lastSendTs = Date.now();
   state.lastSendAt = nowIso();
