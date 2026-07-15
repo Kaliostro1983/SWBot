@@ -2636,14 +2636,7 @@ function getChatId(msg) {
 }
 
 async function getWaChat(chatId) {
-  try {
-    return await client.getChatById(chatId);
-  } catch (_) {
-    const all = await client.getChats();
-    const found = all.find(c => c.id._serialized === chatId);
-    if (!found) throw new Error(`Chat not found: ${chatId}`);
-    return found;
-  }
+  return client.getChatById(chatId);
 }
 
 async function sendWithRateLimit(chatId, text) {
@@ -3435,12 +3428,19 @@ function attachClientEvents(instance) {
 
       const rCode = routeCode(flow);
       if (rCode === 'whatsapp_whatsapp') {
-        await forwardWaToWa(flow, msg);
+        // Defer outside the event handler to avoid Puppeteer concurrency errors
+        // (pupPage.evaluate fails when called while WA processes its own CDP event).
+        setImmediate(() => forwardWaToWa(flow, msg).catch(err =>
+          pushLog('ERROR', 'WA→WA відправка провалена', { error: err.message, stack: err.stack })
+        ));
         return;
       }
 
       if (rCode === 'whatsapp_signal') {
-        await forwardWaToSignal(flow, msg);
+        // Same deferral — msg.downloadMedia() also uses pupPage.evaluate.
+        setImmediate(() => forwardWaToSignal(flow, msg).catch(err =>
+          pushLog('ERROR', 'WA→Signal відправка провалена', { error: err.message, stack: err.stack })
+        ));
         return;
       }
 

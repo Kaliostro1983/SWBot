@@ -4,6 +4,11 @@
 
 ---
 
+## 2026-07-15 — Фікс WA→WA пересилання: setImmediate для виходу з event handler
+
+- `index.cjs`: `forwardWaToWa` та `forwardWaToSignal` тепер запускаються через `setImmediate()` замість прямого `await` всередині `message_create` event handler. `pupPage.evaluate()` (getChatById / chat.sendMessage / msg.downloadMedia) кидав внутрішню WA помилку `r` при виклику з обробника подій — Chrome ще обробляв CDP-подію вхідного повідомлення. `setImmediate` відкладає відправку до наступного тіку після виходу обробника, усуваючи race condition.
+- `getWaChat()`: прибрано fallback до `getChats()` (він теж падав з тієї ж причини).
+
 ## 2026-07-13 — Оновлення signal-cli до 0.14.6 (фікс NullPointerException на serverGuid)
 
 - `cache/signal-cli-0.14.6.tar.gz`: завантажено і встановлено в контейнер `signal-cli-api`. Signal сервери змінили протокол (деякі конверти без `serverGuid`), що призводило до `NullPointerException` і блокувало прийом повідомлень. 0.14.6 вийшов 13.07.2026 саме з цим фіксом.
