@@ -2635,13 +2635,24 @@ function getChatId(msg) {
   return msg.fromMe ? msg.to : msg.from;
 }
 
+async function getWaChat(chatId) {
+  try {
+    return await client.getChatById(chatId);
+  } catch (_) {
+    const all = await client.getChats();
+    const found = all.find(c => c.id._serialized === chatId);
+    if (!found) throw new Error(`Chat not found: ${chatId}`);
+    return found;
+  }
+}
+
 async function sendWithRateLimit(chatId, text) {
   const waitMs = Math.max(0, SEND_DELAY_MS - (Date.now() - lastSendTs));
   if (waitMs > 0) {
     await sleep(waitMs);
   }
 
-  const chat = await client.getChatById(chatId);
+  const chat = await getWaChat(chatId);
   await chat.sendMessage(text);
 
   lastSendTs = Date.now();
@@ -2661,7 +2672,7 @@ async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption)
     await sleep(waitMs);
   }
 
-  const chat = await client.getChatById(chatId);
+  const chat = await getWaChat(chatId);
   const media = new MessageMedia(mimetype, data, filename || undefined);
   await chat.sendMessage(media, { caption: caption || undefined });
 
