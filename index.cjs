@@ -3465,14 +3465,7 @@ function attachClientEvents(instance) {
         return;
       }
 
-      const messageId = msg.id?._serialized || null;
-      if (!messageId) {
-        // fromMe sync-back messages have no messageId — not an error, just skip.
-        if (!msg.fromMe) {
-          pushLog('WARN', 'Немає message_id для інжесту', { chatId });
-        }
-        return;
-      }
+      const messageId = msg.id?._serialized || `auto_${Date.now()}`;
 
       const ingestUrl = flow.fastapiUrl || FASTAPI_URL;
       const payload = {
