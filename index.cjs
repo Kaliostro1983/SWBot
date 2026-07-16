@@ -2706,21 +2706,39 @@ async function downloadMediaSafe(msg) {
 
   try {
     const result = await client.pupPage.evaluate(async (r) => {
-      const mockQpl = {
-        addAnnotations: function() { return this; },
-        addPoint:       function() { return this; }
-      };
+      // Proxy QPL mock — handles any method call WA might add in future versions
+      const mockQpl = new Proxy({}, { get: (_t, _p) => (..._a) => mockQpl });
 
-      const decrypted = await window.Store.DownloadManager.downloadAndMaybeDecrypt({
-        directPath:        r.directPath,
-        encFilehash:       r.encFilehash,
-        filehash:          r.filehash,
-        mediaKey:          r.mediaKey,
-        mediaKeyTimestamp: r.mediaKeyTimestamp,
-        type:              r.type,
-        signal:            (new AbortController).signal,
-        downloadQpl:       mockQpl
-      });
+      async function tryDL(mediaKey) {
+        return window.Store.DownloadManager.downloadAndMaybeDecrypt({
+          directPath:        r.directPath,
+          encFilehash:       r.encFilehash,
+          filehash:          r.filehash,
+          mediaKey:          mediaKey,
+          mediaKeyTimestamp: r.mediaKeyTimestamp,
+          type:              r.type,
+          signal:            (new AbortController).signal,
+          downloadQpl:       mockQpl
+        });
+      }
+
+      // Attempt 1: Uint8Array key (WA internal API expects raw bytes in some versions)
+      let decrypted;
+      let err1msg = '';
+      try {
+        const bin = atob(r.mediaKey);
+        const mkBytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) mkBytes[i] = bin.charCodeAt(i);
+        decrypted = await tryDL(mkBytes);
+      } catch (e1) {
+        err1msg = e1.message;
+        // Attempt 2: base64 string key (previous approach)
+        try {
+          decrypted = await tryDL(r.mediaKey);
+        } catch (e2) {
+          throw new Error('arr:' + err1msg + ' str:' + e2.message);
+        }
+      }
 
       let data;
       try {
@@ -2794,7 +2812,7 @@ async function forwardWaToSignal(flow, msg) {
     pushLog('ERROR', 'WA→Signal: немає targetChatId', { flowId: flow.id });
     return;
   }
-  const text = String(msg.body || '').trim();
+  let text = String(msg.body || '').trim();
 
   // Download WA media attachment if enabled
   const base64Attachments = [];
@@ -2804,11 +2822,14 @@ async function forwardWaToSignal(flow, msg) {
       const mime = String(media.mimetype || 'application/octet-stream').trim();
       base64Attachments.push(`data:${mime};base64,${media.data}`);
     } else {
+      const mediaType = msg._data?.type || 'media';
       pushLog('WARN', 'WA→Signal: вкладення пропущено (не завантажилось)', {
         flowId: flow.id,
-        type: msg._data?.type,
+        type: mediaType,
         mime: msg._data?.mimetype
       });
+      // Ensure Signal group gets at least a text indicator when message has no caption
+      if (!text) text = `[📎 ${mediaType}]`;
     }
   }
 
