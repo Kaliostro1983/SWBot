@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-07-16 — Авто-патч signal-cli 0.14.6 через обгортку jsonrpc2-helper (docker restart стійкий)
+
+- `signal-cli-api-patch/Dockerfile`, `signal-cli-api-patch/jsonrpc2-wrapper.sh`: кастомний Docker-образ для `signal-cli-api` замінює `/usr/bin/jsonrpc2-helper` на wrapper-скрипт. Оригінальний бінарник (ELF) викликається першим (генерує supervisor conf), потім wrapper одразу патчить конфіг: замінює `command=signal-cli-native` на шлях до версії з `/cache`. Цей підхід виживає `docker restart signal-cli-api` — supervisor config завжди генерується wrapper'ом.
+- `docker-compose.signal.yml`: замінено `image: bbernhard/signal-cli-rest-api:latest` + `entrypoint: (патч конфігу)` на `build: ./signal-cli-api-patch`. Хакнутий entrypoint-патч прибрано; volume `./cache:/cache:ro` залишився (wrapper читає звідти найновіший tar.gz).
+- Деплой: на сервері `docker compose -f docker-compose.signal.yml build signal-cli-api && docker compose -f docker-compose.signal.yml up -d signal-cli-api`.
+
 ## 2026-07-15 — Фікс завантаження медіа: downloadMediaSafe() обходить broken WA internal API
 
 - `index.cjs`: `msg.downloadMedia()` кидав `r` (та сама помилка Meta) через внутрішній виклик `msg.downloadMedia({downloadEvenIfExpensive:true})` у `Store.Msg` — Meta змінила протокол. Додана функція `downloadMediaSafe(msg)`: бере `directPath`, `mediaKey`, `encFilehash` безпосередньо з `msg._data` (Node.js сторона) і викликає `window.Store.DownloadManager.downloadAndMaybeDecrypt()` напряму, оминаючи `Store.Msg.get()` та broken resolver. Запасна конвертація base64 якщо `WWebJS.arrayBufferToBase64Async` теж кидає.

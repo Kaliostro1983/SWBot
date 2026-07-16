@@ -39,6 +39,11 @@
 - Додано `reset_docker.sh` (корінь репо + `~/Desktop` на сервері) для ручного перезапуску Signal-контейнерів і бота.
 - Зафіксовано: на сервері `ocheret-63` `sudo -n` для systemctl недоступне — перезапуск сервісу через `pkill -f "node index.cjs"` (systemd `Restart=always`).
 
+## Що зроблено 2026-07-16
+
+- **WA→Signal flows** («Перехоплення 63 W→S», «Батальйони 63 W→S»): усунуто HTTP 400 «Invalid identifier» — `signal-bridge/server.cjs` `/send` endpoint тепер re-encode-ує group ID з single-encoded назад у double-encoded (`Buffer.from(rawId).toString('base64')`), яким чекає signal-cli-api.
+- **signal-cli 0.14.6 авто-патч через wrapper**: новий `signal-cli-api-patch/Dockerfile` замінює `/usr/bin/jsonrpc2-helper` wrapper-скриптом, який спочатку генерує supervisor конфіг оригінальним бінарником, а потім одразу патчить `command=` на 0.14.6 з `/cache`. Тепер `docker restart signal-cli-api` НЕ потребує ручного `restore_signal_patch.sh`.
+
 ## Що робимо зараз
 
 > Примітка (2026-06-02): більшість пунктів нижче — це **вже впроваджена** робота над Signal-онбордингом і routing'ом (деталі та дати — у `docs/CHANGELOG.md`). Список лишається як довідка про поточну поведінку; активні відкриті задачі — у розділі «Що ще потрібно зробити».
