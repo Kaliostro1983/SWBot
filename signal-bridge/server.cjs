@@ -400,7 +400,15 @@ app.post('/send', async (req, res) => {
     if (!chatId) return res.status(400).json({ ok: false, message: 'chatId is required' });
     if (!text && base64Attachments.length === 0) return res.status(400).json({ ok: false, message: 'text or base64Attachments is required' });
 
-    const payload = { number: account, recipients: [chatId] };
+    // signal-cli-api /v2/send expects group IDs double-encoded:
+    // strip "group." prefix, re-encode the inner base64 string as base64 again.
+    let recipientId = chatId;
+    if (chatId.toLowerCase().startsWith('group.')) {
+      const rawPart = chatId.slice(6);
+      recipientId = `group.${Buffer.from(rawPart).toString('base64')}`;
+    }
+
+    const payload = { number: account, recipients: [recipientId] };
     // /v2/send приймає recipients для будь-якого типу адресата:
     // для груп — повний group.* ID, для особистих — номер телефону.
     if (text) payload.message = text;
