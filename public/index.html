@@ -1000,6 +1000,31 @@ docker compose -f docker-compose.signal.yml up -d</div>
 
       <section class="view" id="view-monitor">
         <h1 class="page-title">Моніторинг</h1>
+
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+          <div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;">
+            Продуктивність автоматизацій
+            <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px;">з моменту запуску бота</span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table id="flowStatsTable" style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border);color:var(--muted);text-align:left;">
+                  <th style="padding:8px 12px;font-weight:500;">Автоматизація</th>
+                  <th style="padding:8px 8px;font-weight:500;text-align:center;">Напрямок</th>
+                  <th style="padding:8px 8px;font-weight:500;text-align:center;" title="Пройшли фільтр і відправлені в чергу">Прийнято</th>
+                  <th style="padding:8px 8px;font-weight:500;text-align:center;">Надіслано</th>
+                  <th style="padding:8px 8px;font-weight:500;text-align:center;">Помилки</th>
+                  <th style="padding:8px 12px;font-weight:500;">Остання відправка</th>
+                </tr>
+              </thead>
+              <tbody id="flowStatsBody">
+                <tr><td colspan="6" style="padding:12px;color:var(--muted);text-align:center;">Завантаження…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card" style="padding:0;overflow:hidden;">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);">
             <span style="font-size:13px;font-weight:600;">Журнал активності</span>
@@ -1759,6 +1784,42 @@ docker compose -f docker-compose.signal.yml up -d</div>
       renderFlowList(cachedFlowsSnapshot);
       if (!backgroundWarmupStarted && (s?.signal?.enabled || s?.ready)) {
         warmChatsInBackground().catch(() => {});
+      }
+
+      // Flow stats table
+      const tbody = document.getElementById('flowStatsBody');
+      if (tbody && Array.isArray(s.flows)) {
+        const dirLabel = {
+          signal_whatsapp: 'S→WA', whatsapp_signal: 'WA→S',
+          wa_wa: 'WA→WA', wa_fastapi: 'WA→F',
+          signal_fastapi: 'S→F', signal_signal: 'S→S',
+          whatsapp_whatsapp: 'WA→WA'
+        };
+        function relTime(iso) {
+          if (!iso) return '—';
+          const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+          if (diff < 60) return diff + 'с тому';
+          if (diff < 3600) return Math.floor(diff / 60) + 'хв тому';
+          if (diff < 86400) return Math.floor(diff / 3600) + 'год тому';
+          return Math.floor(diff / 86400) + 'д тому';
+        }
+        const rows = s.flows.map(f => {
+          const st = f._stats || { matched: 0, sent: 0, errors: 0, lastSentAt: null };
+          const paused = f.paused;
+          const errStyle = st.errors > 0 ? 'color:#f87171;font-weight:600;' : 'color:var(--muted);';
+          const sentStyle = st.sent > 0 ? 'color:#4ade80;font-weight:600;' : 'color:var(--muted);';
+          const rowStyle = paused ? 'opacity:0.45;' : '';
+          const dir = dirLabel[f.direction] || (f.sourcePlatform + '→' + f.targetPlatform);
+          return `<tr style="border-bottom:1px solid var(--border);${rowStyle}">
+            <td style="padding:7px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.name}">${f.name}${paused ? ' <span style="font-size:10px;color:var(--muted);">[пауза]</span>' : ''}</td>
+            <td style="padding:7px 8px;text-align:center;font-size:11px;font-family:monospace;color:var(--muted);">${dir}</td>
+            <td style="padding:7px 8px;text-align:center;">${st.matched || '—'}</td>
+            <td style="padding:7px 8px;text-align:center;${sentStyle}">${st.sent || '—'}</td>
+            <td style="padding:7px 8px;text-align:center;${errStyle}">${st.errors || '—'}</td>
+            <td style="padding:7px 12px;color:var(--muted);font-size:11px;">${relTime(st.lastSentAt)}</td>
+          </tr>`;
+        }).join('');
+        tbody.innerHTML = rows || '<tr><td colspan="6" style="padding:12px;color:var(--muted);text-align:center;">Немає автоматизацій</td></tr>';
       }
     }
 

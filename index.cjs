@@ -1205,6 +1205,18 @@ function isFastapiDirection(flow) {
 
 let flows = [];
 
+const flowStats = new Map(); // flowId → { matched, sent, errors, lastSentAt, lastErrorAt }
+function bumpFlowStat(flowId, field) {
+  if (!flowId) return;
+  if (!flowStats.has(flowId)) {
+    flowStats.set(flowId, { matched: 0, sent: 0, errors: 0, lastSentAt: null, lastErrorAt: null });
+  }
+  const s = flowStats.get(flowId);
+  if (field === 'matched') { s.matched += 1; }
+  else if (field === 'sent') { s.sent += 1; s.lastSentAt = nowIso(); }
+  else if (field === 'errors') { s.errors += 1; s.lastErrorAt = nowIso(); }
+}
+
 // ── Addon runtime state ────────────────────────────────────────────────────
 const addonState = new Map(); // flowId → { delayMeter, missingMessages }
 
@@ -1801,7 +1813,10 @@ function getPublicState() {
     lastDisconnectReason: state.lastDisconnectReason,
     counters: state.counters,
     qrAvailableData: lastQr,
-    flows,
+    flows: flows.map(f => {
+      const st = flowStats.get(f.id);
+      return st ? { ...f, _stats: st } : f;
+    }),
     routingMode: flows.length > 0 ? 'flows' : 'env',
     panel: {
       authRequired: isPanelAuthEnabled(),
@@ -2788,6 +2803,7 @@ async function forwardWaToWa(flow, msg) {
           dl.filename || undefined,
           caption || undefined
         );
+        bumpFlowStat(flow.id, 'sent');
         return;
       }
     } catch (err) {
@@ -2799,6 +2815,7 @@ async function forwardWaToWa(flow, msg) {
 
   if (caption) {
     await sendWithRateLimit(target, caption);
+    bumpFlowStat(flow.id, 'sent');
   } else if (!wantMedia) {
     pushLog('INFO', 'WA→WA: немає тексту й медіа для пересилання', {
       flowId: flow.id
@@ -2843,10 +2860,12 @@ async function forwardWaToSignal(flow, msg) {
   state.counters.sent += 1;
   state.counters.signalSent += 1;
   pushLog('INFO', 'WA→Signal sent', {
+    flowId: flow.id,
     targetChat: target,
     textLen: text.length,
     attachmentsCount: base64Attachments.length
   });
+  bumpFlowStat(flow.id, 'sent');
 }
 
 async function postToFastAPI(payload, url = FASTAPI_URL) {
@@ -2972,6 +2991,7 @@ async function processSignalIncomingMessage(message) {
     return;
   }
   state.counters.accepted += 1;
+  bumpFlowStat(flow.id, 'matched');
 
   const signalSentAtMs = typeof message.sentAt === 'number' ? message.sentAt : Date.now();
   processDelayMeterAddon(flow, rawText, signalSentAtMs);
@@ -3012,6 +3032,7 @@ async function processSignalIncomingMessage(message) {
       targetChat: target,
       attachmentsCount: base64Attachments.length
     });
+    bumpFlowStat(flow.id, 'sent');
     return;
   }
 
@@ -3071,6 +3092,7 @@ async function processSignalIncomingMessage(message) {
         targetChat: target,
         attachmentsCount: canSendAttachments ? message.attachments.length : 0
       });
+      bumpFlowStat(flow.id, 'sent');
     } catch (err) {
       if (isWaTransientDetachedFrameError(err)) {
         pushLog('ERROR', 'Signal→WA failed: detached frame, restarting WA', {
@@ -3085,6 +3107,7 @@ async function processSignalIncomingMessage(message) {
           message: err?.message || String(err)
         });
       }
+      bumpFlowStat(flow.id, 'errors');
     }
     return;
   }
@@ -3490,6 +3513,7 @@ function attachClientEvents(instance) {
       }
 
       state.counters.accepted += 1;
+      bumpFlowStat(flow.id, 'matched');
 
       const waSentAtMs = (msg.timestamp || Math.floor(Date.now() / 1000)) * 1000;
       processDelayMeterAddon(flow, rawText, waSentAtMs);
@@ -3517,17 +3541,19 @@ function attachClientEvents(instance) {
       if (rCode === 'whatsapp_whatsapp') {
         // Defer outside the event handler to avoid Puppeteer concurrency errors
         // (pupPage.evaluate fails when called while WA processes its own CDP event).
-        setImmediate(() => forwardWaToWa(flow, msg).catch(err =>
-          pushLog('ERROR', 'WA→WA відправка провалена', { error: err.message, stack: err.stack })
-        ));
+        setImmediate(() => forwardWaToWa(flow, msg).catch(err => {
+          pushLog('ERROR', 'WA→WA відправка провалена', { error: err.message, stack: err.stack });
+          bumpFlowStat(flow.id, 'errors');
+        }));
         return;
       }
 
       if (rCode === 'whatsapp_signal') {
         // Same deferral — msg.downloadMedia() also uses pupPage.evaluate.
-        setImmediate(() => forwardWaToSignal(flow, msg).catch(err =>
-          pushLog('ERROR', 'WA→Signal відправка провалена', { error: err.message, stack: err.stack })
-        ));
+        setImmediate(() => forwardWaToSignal(flow, msg).catch(err => {
+          pushLog('ERROR', 'WA→Signal відправка провалена', { error: err.message, stack: err.stack });
+          bumpFlowStat(flow.id, 'errors');
+        }));
         return;
       }
 
