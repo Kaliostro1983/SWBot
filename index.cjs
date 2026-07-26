@@ -1564,6 +1564,8 @@ const state = {
   lastErrorAt: null,
   lastError: null,
   lastDisconnectReason: null,
+  waLastIncomingAt: null,   // час останнього ВХІДНОГО WA-повідомлення (fromMe:false)
+  waChatsPrefetchErrors: 0, // лічильник збоїв prefetch списку чатів ("r") — ознака деградації WA Web
   signal: {
     enabled: Boolean(SIGNAL_API_URL),
     lastPollAt: null,
@@ -1811,6 +1813,8 @@ function getPublicState() {
     lastErrorAt: state.lastErrorAt,
     lastError: state.lastError,
     lastDisconnectReason: state.lastDisconnectReason,
+    waLastIncomingAt: state.waLastIncomingAt,
+    waChatsPrefetchErrors: state.waChatsPrefetchErrors,
     counters: state.counters,
     qrAvailableData: lastQr,
     flows: flows.map(f => {
@@ -3492,6 +3496,9 @@ function attachClientEvents(instance) {
       // KPI statistics count only messages that match configured source chats.
       state.counters.received += 1;
       state.counters.waReceived += 1;
+      // Відмітка вхідного (не власного) WA-повідомлення — для детекції "send-only" сесії:
+      // якщо WA ready, але fromMe:false давно не надходили — клієнт надсилає, але не приймає.
+      if (!msg.fromMe) state.waLastIncomingAt = nowIso();
 
       await Promise.all(matchedWaFlows.map(async (flow) => {
       if (flow.paused === true) {
@@ -5138,12 +5145,13 @@ async function prefetchChatsInBackground() {
       );
     }
   } catch (e) {
+    state.waChatsPrefetchErrors += 1;
     pushLogThrottled(
       'wa_chats_prefetch_failed',
       120000,
       'WARN',
       'WhatsApp chats prefetch failed',
-      { message: e.message || String(e) }
+      { message: e.message || String(e), total: state.waChatsPrefetchErrors }
     );
   }
 }

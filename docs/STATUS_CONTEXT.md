@@ -39,6 +39,10 @@
 - Додано `reset_docker.sh` (корінь репо + `~/Desktop` на сервері) для ручного перезапуску Signal-контейнерів і бота.
 - Зафіксовано: на сервері `ocheret-63` `sudo -n` для systemctl недоступне — перезапуск сервісу через `pkill -f "node index.cjs"` (systemd `Restart=always`).
 
+## Що зроблено 2026-07-27
+
+- **Індикатор здоров'я WhatsApp** у Моніторингу: банер попереджає про "send-only" сесію (WA `ready`, але вхідних fromMe:false немає ≥15 хв) та про деградацію WA Web (≥5 збоїв prefetch "r"). Нові поля стану: `waLastIncomingAt`, `waChatsPrefetchErrors` (у `/api/state`). Причина — після relink WA-сесія іноді надсилає, але не приймає; лікується лише повним скидом `.wwebjs_auth` + новий QR.
+
 ## Що зроблено 2026-07-16
 
 - **WA→Signal flows** («Перехоплення 63 W→S», «Батальйони 63 W→S»): усунуто HTTP 400 «Invalid identifier» — `signal-bridge/server.cjs` `/send` endpoint тепер re-encode-ує group ID з single-encoded назад у double-encoded (`Buffer.from(rawId).toString('base64')`), яким чекає signal-cli-api.

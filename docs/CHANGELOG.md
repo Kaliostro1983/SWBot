@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-07-27 — Індикатор здоров'я WhatsApp у Моніторингу (детекція "send-only" сесії)
+
+- Передумова: після relink через QR web-сесія WhatsApp може стати "тільки надсилання" — бот шле в WA, але не приймає вхідних (fromMe:false). Явних помилок у лозі немає; єдина ознака — відсутність вхідних. Звичайний рестарт не лікує, потрібен повний скид `.wwebjs_auth` + новий QR.
+- `index.cjs`: у `state` додано `waLastIncomingAt` (час останнього вхідного WA-повідомлення, оновлюється у `message_create` при `!msg.fromMe`) та `waChatsPrefetchErrors` (лічильник збоїв prefetch списку чатів, інкремент у catch `WhatsApp chats prefetch failed`). Обидва поля віддаються в `getPublicState()` / `/api/state`.
+- `public/index.html`: у секції «Моніторинг» новий банер `#waHealthWarning`. Показується, коли WA `ready`, але вхідних немає ≥15 хв («send-only» підозра), або коли `waChatsPrefetchErrors ≥ 5` (деградація WA Web). Рендер у `renderState()`.
+
 ## 2026-07-16 — Авто-патч signal-cli 0.14.6 через обгортку jsonrpc2-helper (docker restart стійкий)
 
 - `signal-cli-api-patch/Dockerfile`, `signal-cli-api-patch/jsonrpc2-wrapper.sh`: кастомний Docker-образ для `signal-cli-api` замінює `/usr/bin/jsonrpc2-helper` на wrapper-скрипт. Оригінальний бінарник (ELF) викликається першим (генерує supervisor conf), потім wrapper одразу патчить конфіг: замінює `command=signal-cli-native` на шлях до версії з `/cache`. Цей підхід виживає `docker restart signal-cli-api` — supervisor config завжди генерується wrapper'ом.
