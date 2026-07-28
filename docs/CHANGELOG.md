@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-07-27 — Фікс списку WA-чатів: getChatsSafe() обходить broken getChats() ('r')
+
+- Симптом: у панелі "оновити список чатів" не показувало нові WA-групи (напр. щойно створену). Причина — `client.getChats()` кидав `r` (та сама поломка Meta-протоколу, що й `downloadMedia`): внутрішньо серіалізує кожну модель чату через `window.WWebJS.getChat`/`_serializeChatObj`, що падає. При збої ендпоінти віддавали старий кеш, тому нові групи не з'являлись.
+- `index.cjs`: додано `getChatsSafe()` — читає `id` + назву напряму зі `Store.Chat.getModelsArray()` через `pupPage.evaluate`, оминаючи зламаний резолвер. Назва береться з `formattedTitle` → `name` → `groupMetadata.subject` → `contact.name/pushname`. Повертає об'єкти у формі `client.getChats()` (`{ id: { _serialized, user }, name }`).
+- Замінено всі 4 виклики `client.getChats()` на `getChatsSafe()`: `/api/push/chats`, `/api/chats?live=1`, `/api/messenger-chats` (refresh), `prefetchChatsInBackground`.
+- Перевірено: live-список повернув 24 групи (раніше 0 через `r`), нова група підтягнулась.
+
 ## 2026-07-27 — Індикатор здоров'я WhatsApp у Моніторингу (детекція "send-only" сесії)
 
 - Передумова: після relink через QR web-сесія WhatsApp може стати "тільки надсилання" — бот шле в WA, але не приймає вхідних (fromMe:false). Явних помилок у лозі немає; єдина ознака — відсутність вхідних. Звичайний рестарт не лікує, потрібен повний скид `.wwebjs_auth` + новий QR.

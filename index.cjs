@@ -2785,6 +2785,43 @@ async function downloadMediaSafe(msg) {
 }
 
 /**
+ * List WhatsApp chats without client.getChats(), which internally serializes
+ * every chat model via window.WWebJS.getChat / _serializeChatObj and throws 'r'
+ * after Meta's protocol change (2026-07). Reads id + title straight off the
+ * Store.Chat model objects, bypassing the broken serializer.
+ * Returns objects shaped like client.getChats() ({ id: { _serialized, user }, name }),
+ * so existing call sites need only swap client.getChats() -> getChatsSafe().
+ */
+async function getChatsSafe() {
+  const raw = await client.pupPage.evaluate(() => {
+    const out = [];
+    const store = window.Store || {};
+    const models = (store.Chat && typeof store.Chat.getModelsArray === 'function')
+      ? store.Chat.getModelsArray()
+      : [];
+    for (const c of models) {
+      try {
+        const id = c && c.id && (c.id._serialized || (typeof c.id.toString === 'function' ? c.id.toString() : ''));
+        if (!id) continue;
+        let name = '';
+        try { name = c.formattedTitle || c.name || ''; } catch (_) {}
+        if (!name) { try { name = (c.groupMetadata && c.groupMetadata.subject) || ''; } catch (_) {} }
+        if (!name) { try { name = (c.contact && (c.contact.name || c.contact.pushname)) || ''; } catch (_) {} }
+        out.push({ id: String(id), name: String(name || '') });
+      } catch (_) { /* skip unreadable chat */ }
+    }
+    return out;
+  });
+  return raw.map((r) => {
+    const serialized = String(r.id || '');
+    return {
+      id: { _serialized: serialized, user: serialized.split('@')[0] },
+      name: r.name || ''
+    };
+  });
+}
+
+/**
  * WA → WhatsApp: текст і/або зображення (інші типи медіа — за потреби розширити).
  */
 async function forwardWaToWa(flow, msg) {
@@ -3963,7 +4000,7 @@ app.get('/api/push/chats', async (req, res) => {
     if (platform === 'whatsapp' || platform === 'all') {
       if (state.status === 'ready' && client) {
         try {
-          const chats = await client.getChats();
+          const chats = await getChatsSafe();
           const list = chats
             .filter((c) => !onlyGroups || String(c.id._serialized || '').endsWith('@g.us'))
             .map((c) => {
@@ -4404,7 +4441,7 @@ app.get('/api/chats', async (req, res) => {
     }
     try {
       const onlyGroups = String(req.query.only_groups ?? '1') !== '0';
-      const chats = await client.getChats();
+      const chats = await getChatsSafe();
       const list = chats
         .filter((c) => {
           if (!onlyGroups) return true;
@@ -4808,7 +4845,7 @@ app.get('/api/messenger-chats', async (req, res) => {
         const before = new Map(chats.map((c) => [String(c.id || '').trim(), String(c.name || '').trim()]).filter((x) => x[0]));
         let waChats;
         try {
-          waChats = await client.getChats();
+          waChats = await getChatsSafe();
         } catch (err) {
           // WhatsApp Web sometimes reloads; serve cache instead of breaking UI.
           const out = applyOnlyGroupsToLiveChats(platform, chats, onlyGroups);
@@ -5126,7 +5163,7 @@ async function prefetchChatsInBackground() {
   }
   try {
     if (client && state.ready) {
-      const chats = await client.getChats();
+      const chats = await getChatsSafe();
       const list = chats
         .map((c) => ({
           id: c.id._serialized,
