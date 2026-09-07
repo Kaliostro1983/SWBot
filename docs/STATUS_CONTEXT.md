@@ -39,6 +39,11 @@
 - Додано `reset_docker.sh` (корінь репо + `~/Desktop` на сервері) для ручного перезапуску Signal-контейнерів і бота.
 - Зафіксовано: на сервері `ocheret-63` `sudo -n` для systemctl недоступне — перезапуск сервісу через `pkill -f "node index.cjs"` (systemd `Restart=always`).
 
+## Що зроблено 2026-09-07
+
+- **WhatsApp `ready` не спрацьовував** (WA Web 2.3000.x несумісний з `whatsapp-web.js` 1.34.6 — `getChat` undefined, Signal→WA 60% помилок, цикл session-stale→QR). Перевели `whatsapp-web.js` на форк `github:Eonus21/whatsapp-web.js#06ee466...` (v1.34.8) — той самий, що працює в SWApp. WA виходить у `ready`, пересилання відновлено.
+- **Відкрита задача:** форк вантажить чати ліниво → `getChatsSafe()` повертає 0 груп (live-список WA у конструкторі автоматизацій порожній). Роутинг наявних flow працює. Треба адаптувати `getChatsSafe` під форк.
+
 ## Що зроблено 2026-07-27
 
 - **Фікс списку WA-чатів** (`getChatsSafe()`): `client.getChats()` кидав `r` (broken Meta-серіалізація), тому нові WA-групи не з'являлись в панелі — віддавався старий кеш. Нова функція читає id+назву напряму зі `Store.Chat` через `pupPage.evaluate`, підключена в усі 4 місця виклику. Аналогічно до `downloadMediaSafe`.

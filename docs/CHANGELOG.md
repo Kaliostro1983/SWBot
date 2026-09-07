@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-09-07 — WhatsApp «ready» не спрацьовує (WA Web 2.3000.x): перехід на форк Eonus21
+
+- Симптом: WA-клієнт авторизувався, але не досягав `ready`; `client.sendMessage` падав на `Cannot read properties of undefined (reading 'getChat')`, Signal→WA ~60% помилок; вотчдог «session stale after 90s» зациклював QR. Причина — `whatsapp-web.js` 1.34.6 несумісний з поточним WhatsApp Web 2.3000.x (ін'єкція `WWebJS`/`Store` не піднімається; відомий баг wwebjs #127084 / #3971 «A/B testing disables module loading»).
+- Пін `webVersionCache` неможливий: сумісні HTML-версії (2.2412.54, 2.3000.1017054665) видалені з `wppconnect-team/wa-version` (404), а наявні — «зламаної ери».
+- **Фікс:** `whatsapp-web.js` → `github:Eonus21/whatsapp-web.js#06ee466f1694af71a026bd0e72fae5ded3316c55` (v1.34.8) — той самий форк, що вже стабільно виходить у `ready` в SWApp на цьому ж сервері. Після `npm install` + рестарту node WA виходить у `ready` за ~24с, Signal→WA/WA→Signal шлють, помилок `getChat` немає. `package.json`/`package-lock.json` оновлено.
+- **Відомий побічний ефект:** форк вантажить чати ліниво → `Store.Chat.getModelsArray()` порожній → `getChatsSafe()` повертає 0 груп (live-список WA для конструктора автоматизацій). Наявні автоматизації працюють (роутинг за збереженими id). Потребує адаптації `getChatsSafe` під форк — окрема задача.
+- Бекап: `package.json.bak_wwebjs`, `package-lock.json.bak_wwebjs` на сервері.
+
 ## 2026-07-27 — Фікс списку WA-чатів: getChatsSafe() обходить broken getChats() ('r')
 
 - Симптом: у панелі "оновити список чатів" не показувало нові WA-групи (напр. щойно створену). Причина — `client.getChats()` кидав `r` (та сама поломка Meta-протоколу, що й `downloadMedia`): внутрішньо серіалізує кожну модель чату через `window.WWebJS.getChat`/`_serializeChatObj`, що падає. При збої ендпоінти віддавали старий кеш, тому нові групи не з'являлись.
