@@ -2728,8 +2728,18 @@ async function downloadMediaSafe(msg) {
       // Proxy QPL mock — handles any method call WA might add in future versions
       const mockQpl = new Proxy({}, { get: (_t, _p) => (..._a) => mockQpl });
 
+      // The Eonus21 fork / WA Web 2.3000.x moved the download manager out of
+      // window.Store into the 'WAWebDownloadManager' module. Resolve it there
+      // first, fall back to window.Store.DownloadManager for older builds.
+      const DM = (() => {
+        try { const m = window.require('WAWebDownloadManager'); if (m && m.downloadManager) return m.downloadManager; } catch (_) {}
+        try { if (window.Store && window.Store.DownloadManager) return window.Store.DownloadManager; } catch (_) {}
+        return null;
+      })();
+      if (!DM) throw new Error('DownloadManager module not found');
+
       async function tryDL(mediaKey) {
-        return window.Store.DownloadManager.downloadAndMaybeDecrypt({
+        return DM.downloadAndMaybeDecrypt({
           directPath:        r.directPath,
           encFilehash:       r.encFilehash,
           filehash:          r.filehash,
@@ -2788,17 +2798,28 @@ async function downloadMediaSafe(msg) {
  * List WhatsApp chats without client.getChats(), which internally serializes
  * every chat model via window.WWebJS.getChat / _serializeChatObj and throws 'r'
  * after Meta's protocol change (2026-07). Reads id + title straight off the
- * Store.Chat model objects, bypassing the broken serializer.
+ * chat model objects (WAWebCollections.Chat, fallback Store.Chat), bypassing
+ * the broken serializer.
  * Returns objects shaped like client.getChats() ({ id: { _serialized, user }, name }),
  * so existing call sites need only swap client.getChats() -> getChatsSafe().
  */
 async function getChatsSafe() {
   const raw = await client.pupPage.evaluate(() => {
     const out = [];
-    const store = window.Store || {};
-    const models = (store.Chat && typeof store.Chat.getModelsArray === 'function')
-      ? store.Chat.getModelsArray()
-      : [];
+    // The Eonus21 fork (v1.34.8) and current WhatsApp Web keep chats in the
+    // module 'WAWebCollections', NOT on window.Store.Chat (which is empty there).
+    // Try that first, fall back to window.Store.Chat for older builds.
+    let models = [];
+    try {
+      models = window.require('WAWebCollections').Chat.getModelsArray();
+    } catch (_) {
+      try {
+        const store = window.Store || {};
+        models = (store.Chat && typeof store.Chat.getModelsArray === 'function')
+          ? store.Chat.getModelsArray()
+          : [];
+      } catch (__) { models = []; }
+    }
     for (const c of models) {
       try {
         const id = c && c.id && (c.id._serialized || (typeof c.id.toString === 'function' ? c.id.toString() : ''));

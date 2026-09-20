@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-09-20 — Форк Eonus21: полагоджено список чатів і завантаження медіа (модулі переїхали)
+
+- Після переходу на форк Eonus21 два наші обходи перестали працювати, бо форк/WA Web 2.3000.x тримають внутрішні об'єкти не в `window.Store`, а в іменованих модулях:
+  - `getChatsSafe()` читав `window.Store.Chat.getModelsArray()` (порожній) → **0 груп** → `/api/push/chats` порожній → ГОІ не бачив актуальних груп (пушив у застарілий chat_id). Виправлено: `window.require('WAWebCollections').Chat.getModelsArray()`, fallback на `Store.Chat`.
+  - `downloadMediaSafe()` викликав `window.Store.DownloadManager.downloadAndMaybeDecrypt` (undefined, 16 помилок) → медіа з WA (WA→Signal, WA→WA) не завантажувалось. Виправлено: `window.require('WAWebDownloadManager').downloadManager`, fallback на `Store.DownloadManager` (той самий модуль, що юзає форк у `structures/Message.js`).
+- Перевірено після рестарту: `/api/push/chats` → 26 груп (видно `Аналітика 63 = 120363423068157733`); 0 нових помилок `DownloadManager`.
+- **Відкрито (#3):** відправка медіа В WhatsApp (Signal→WA, напр. Батальйони, і пуш з картинкою) зависає на рівні **самого форку** (`Runtime.callFunctionOn timed out`) — не наш код. Текст доходить. Потребує піну версії WA Web / оновлення форку, або текстового фолбеку.
+
 ## 2026-09-07 — WhatsApp «ready» не спрацьовує (WA Web 2.3000.x): перехід на форк Eonus21
 
 - Симптом: WA-клієнт авторизувався, але не досягав `ready`; `client.sendMessage` падав на `Cannot read properties of undefined (reading 'getChat')`, Signal→WA ~60% помилок; вотчдог «session stale after 90s» зациклював QR. Причина — `whatsapp-web.js` 1.34.6 несумісний з поточним WhatsApp Web 2.3000.x (ін'єкція `WWebJS`/`Store` не піднімається; відомий баг wwebjs #127084 / #3971 «A/B testing disables module loading»).

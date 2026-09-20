@@ -39,6 +39,12 @@
 - Додано `reset_docker.sh` (корінь репо + `~/Desktop` на сервері) для ручного перезапуску Signal-контейнерів і бота.
 - Зафіксовано: на сервері `ocheret-63` `sudo -n` для systemctl недоступне — перезапуск сервісу через `pkill -f "node index.cjs"` (systemd `Restart=always`).
 
+## Що зроблено 2026-09-20
+
+- **Форк Eonus21 — полагоджено 2 обходи** (об'єкти переїхали з `window.Store` у модулі): `getChatsSafe` → `WAWebCollections.Chat` (список чатів знову працює, ГОІ бачить групи); `downloadMediaSafe` → `WAWebDownloadManager.downloadManager` (медіа з WA завантажується). Fallback на `Store.*` збережено.
+- **Аналітика 63:** справжній chat_id = `120363423068157733` (тепер видно в `/api/push/chats`); ГОІ пушив у застарілий `607691199`. Переобрати ціль — на боці radio63.
+- **Відкрито (#3):** відправка медіа В WA (Батальйони, пуш-картинки) зависає на рівні форку (`Runtime.callFunctionOn timed out`) — потребує піну WA Web / оновлення форку / текстового фолбеку.
+
 ## Що зроблено 2026-09-07
 
 - **WhatsApp `ready` не спрацьовував** (WA Web 2.3000.x несумісний з `whatsapp-web.js` 1.34.6 — `getChat` undefined, Signal→WA 60% помилок, цикл session-stale→QR). Перевели `whatsapp-web.js` на форк `github:Eonus21/whatsapp-web.js#06ee466...` (v1.34.8) — той самий, що працює в SWApp. WA виходить у `ready`, пересилання відновлено.
