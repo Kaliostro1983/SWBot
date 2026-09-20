@@ -42,6 +42,11 @@ const AUTO_SIGNAL_SOURCE_AUTOREMAP = String(
 const CHROME_EXECUTABLE_PATH = String(process.env.CHROME_EXECUTABLE_PATH || '').trim();
 const WA_LAUNCH_TIMEOUT_MS = Math.max(30000, Number(process.env.WA_LAUNCH_TIMEOUT_MS || 120000));
 const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TIMEOUT_MS || 180000));
+// Media send to WA (fork's processMediaData/upload) intermittently hangs on WA
+// Web 2.3000.x and only fails at the 180s protocolTimeout. A shorter per-attempt
+// timeout + retry gets the image through most of the time.
+const WA_MEDIA_SEND_TIMEOUT_MS = Math.max(20000, Number(process.env.WA_MEDIA_SEND_TIMEOUT_MS || 60000));
+const WA_MEDIA_SEND_RETRIES = Math.max(0, Number(process.env.WA_MEDIA_SEND_RETRIES || 2));
 const SIGNAL_RAW_CAPTURE = String(process.env.SIGNAL_RAW_CAPTURE || '0').trim() === '1';
 const DEBUG_ROUTING = String(process.env.DEBUG_ROUTING || '0').trim() === '1';
 // Перекриття вікна опитування Signal (мс): sinceTs зсувається назад на цей час,
@@ -2682,17 +2687,40 @@ async function sendMediaWithRateLimit(chatId, mimetype, data, filename, caption)
   }
 
   const media = new MessageMedia(mimetype, data, filename || undefined);
-  await client.sendMessage(chatId, media, { caption: caption || undefined });
 
-  lastSendTs = Date.now();
-  state.lastSendAt = nowIso();
-  state.counters.sent += 1;
-  state.counters.waSent += 1;
-
-  pushLog('INFO', 'Forward sent (media)', {
-    targetChat: chatId,
-    mimetype
-  });
+  // The fork's media upload hangs intermittently on WA Web 2.3000.x (times out
+  // only at the 180s protocolTimeout). Race each attempt against a shorter
+  // timeout and retry — a hung attempt never completes, so retrying rarely
+  // duplicates. On timeout we abandon the pending send (its rejection is
+  // swallowed to avoid unhandledRejection).
+  const attempts = WA_MEDIA_SEND_RETRIES + 1;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const sendP = client.sendMessage(chatId, media, { caption: caption || undefined });
+      sendP.catch(() => {}); // avoid unhandledRejection if this attempt is abandoned
+      await Promise.race([
+        sendP,
+        new Promise((_, rej) => setTimeout(
+          () => rej(new Error(`media send timeout after ${WA_MEDIA_SEND_TIMEOUT_MS}ms`)),
+          WA_MEDIA_SEND_TIMEOUT_MS
+        ))
+      ]);
+      lastSendTs = Date.now();
+      state.lastSendAt = nowIso();
+      state.counters.sent += 1;
+      state.counters.waSent += 1;
+      pushLog('INFO', 'Forward sent (media)', { targetChat: chatId, mimetype, attempt });
+      return;
+    } catch (err) {
+      lastErr = err;
+      lastSendTs = Date.now(); // keep rate-limit spacing even on a failed attempt
+      if (attempt < attempts) {
+        pushLog('WARN', 'WA media send hung, retrying', { targetChat: chatId, attempt, error: err.message });
+      }
+    }
+  }
+  throw lastErr || new Error('WA media send failed after retries');
 }
 
 /**

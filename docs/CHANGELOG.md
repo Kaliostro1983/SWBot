@@ -10,7 +10,7 @@
   - `getChatsSafe()` читав `window.Store.Chat.getModelsArray()` (порожній) → **0 груп** → `/api/push/chats` порожній → ГОІ не бачив актуальних груп (пушив у застарілий chat_id). Виправлено: `window.require('WAWebCollections').Chat.getModelsArray()`, fallback на `Store.Chat`.
   - `downloadMediaSafe()` викликав `window.Store.DownloadManager.downloadAndMaybeDecrypt` (undefined, 16 помилок) → медіа з WA (WA→Signal, WA→WA) не завантажувалось. Виправлено: `window.require('WAWebDownloadManager').downloadManager`, fallback на `Store.DownloadManager` (той самий модуль, що юзає форк у `structures/Message.js`).
 - Перевірено після рестарту: `/api/push/chats` → 26 груп (видно `Аналітика 63 = 120363423068157733`); 0 нових помилок `DownloadManager`.
-- **Відкрито (#3):** відправка медіа В WhatsApp (Signal→WA, напр. Батальйони, і пуш з картинкою) зависає на рівні **самого форку** (`Runtime.callFunctionOn timed out`) — не наш код. Текст доходить. Потребує піну версії WA Web / оновлення форку, або текстового фолбеку.
+- **#3 (відправка медіа В WhatsApp) — пом'якшено ретраєм:** upload форку (`processMediaData`/`waitForPrep`) інтермітно зависає на WA Web 2.3000.x і падає лише на 180с `protocolTimeout` (~50% картинок гинуло). `sendMediaWithRateLimit` тепер робить спробу з коротким лімітом (`WA_MEDIA_SEND_TIMEOUT_MS`=60с) і ретраєм (`WA_MEDIA_SEND_RETRIES`=2, тобто до 3 спроб). Зависла спроба не завершується → ретрай майже не дублює. При ~50% успіху 3 спроби дають ~88%. Це наш код (не патч WA-внутрішностей). Справжнє рішення (пін WA Web / оновлення форку) лишається на потім.
 
 ## 2026-09-07 — WhatsApp «ready» не спрацьовує (WA Web 2.3000.x): перехід на форк Eonus21
 
