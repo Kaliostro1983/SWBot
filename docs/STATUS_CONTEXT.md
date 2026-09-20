@@ -43,7 +43,7 @@
 
 - **Форк Eonus21 — полагоджено 2 обходи** (об'єкти переїхали з `window.Store` у модулі): `getChatsSafe` → `WAWebCollections.Chat` (список чатів знову працює, ГОІ бачить групи); `downloadMediaSafe` → `WAWebDownloadManager.downloadManager` (медіа з WA завантажується). Fallback на `Store.*` збережено.
 - **Аналітика 63:** справжній chat_id = `120363423068157733` (тепер видно в `/api/push/chats`); ГОІ пушив у застарілий `607691199`. Переобрати ціль — на боці radio63.
-- **#3 (медіа В WA, Батальйони) — пом'якшено:** `sendMediaWithRateLimit` тепер з таймаутом+ретраєм (`WA_MEDIA_SEND_TIMEOUT_MS`=60с, `WA_MEDIA_SEND_RETRIES`=2), бо upload форку інтермітно зависає. ~50%→~88% доставки картинок. Повне рішення (пін WA Web / оновлення форку) — на потім.
+- **#3 (медіа В WA) — ВИРІШЕНО.** Корінь: форк spread-ить `__x_id` media-моделі у вихідний Msg → затирає MsgKey → `getValidatedSender()` падає (`"id property … undefined"`, WA Web 2.3000.x). Фікс: `delete message.__x_id;` у `Injected/Utils.js` форку, персистентно через `scripts/patch-wwebjs.cjs` (postinstall). Плюс ретрай `sendMediaWithRateLimit` на рідкісні зависання. Тест: картинка пішла `attempt:1`. Форк-патч на сервері в `node_modules` (bak: `Utils.js.bak_xid`).
 
 ## Що зроблено 2026-09-07
 
