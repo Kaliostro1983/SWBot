@@ -47,6 +47,10 @@ const WA_PROTOCOL_TIMEOUT_MS = Math.max(60000, Number(process.env.WA_PROTOCOL_TI
 // timeout + retry gets the image through most of the time.
 const WA_MEDIA_SEND_TIMEOUT_MS = Math.max(20000, Number(process.env.WA_MEDIA_SEND_TIMEOUT_MS || 60000));
 const WA_MEDIA_SEND_RETRIES = Math.max(0, Number(process.env.WA_MEDIA_SEND_RETRIES || 2));
+// WA→Signal / Signal→Signal sends occasionally fail (400 / 30s timeout) when
+// signal-cli is overloaded by a burst from a busy group. Retry a few times.
+const SIGNAL_SEND_RETRIES = Math.max(0, Number(process.env.SIGNAL_SEND_RETRIES || 2));
+const SIGNAL_SEND_RETRY_DELAY_MS = Math.max(200, Number(process.env.SIGNAL_SEND_RETRY_DELAY_MS || 1500));
 const SIGNAL_RAW_CAPTURE = String(process.env.SIGNAL_RAW_CAPTURE || '0').trim() === '1';
 const DEBUG_ROUTING = String(process.env.DEBUG_ROUTING || '0').trim() === '1';
 // Перекриття вікна опитування Signal (мс): sinceTs зсувається назад на цей час,
@@ -1881,6 +1885,7 @@ async function signalApiRequest(
       url,
       status,
       code,
+      body: err?.response?.data ?? null, // bridge/signal-cli response body (e.g. 400 reason)
       timeoutMs: reqTimeout,
       params: params || null
     };
@@ -2454,11 +2459,36 @@ async function checkSignalLinkedStatus() {
 }
 
 async function sendSignalMessage(chatId, text, base64Attachments = []) {
-  await signalApiRequest('post', '/send', {
-    chatId,
-    text,
-    base64Attachments
-  });
+  const attempts = SIGNAL_SEND_RETRIES + 1;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await signalApiRequest('post', '/send', { chatId, text, base64Attachments });
+      if (attempt > 1) {
+        pushLog('INFO', 'Signal send succeeded on retry', { attempt, chatId: String(chatId).slice(-32) });
+      }
+      return;
+    } catch (err) {
+      lastErr = err;
+      const st = err?.signalContext?.status || null;
+      // Under burst load signal-cli returns transient 400 or times out; both
+      // recover on a later attempt. Don't retry a clearly-final client error.
+      const retriable = st === 400 || st === 429 || (st >= 500 && st <= 599) ||
+        String(err?.message || '').toLowerCase().includes('timeout');
+      if (attempt < attempts && retriable) {
+        pushLog('WARN', 'Signal send failed, retrying', {
+          attempt, status: st,
+          chatId: String(chatId).slice(-32),
+          error: err.message,
+          body: err?.signalContext?.body ?? null
+        });
+        await sleep(SIGNAL_SEND_RETRY_DELAY_MS);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr || new Error('Signal send failed after retries');
 }
 
 async function downloadSignalAttachment(attachmentId) {
@@ -3644,7 +3674,13 @@ function attachClientEvents(instance) {
       if (rCode === 'whatsapp_signal') {
         // Same deferral — msg.downloadMedia() also uses pupPage.evaluate.
         setImmediate(() => forwardWaToSignal(flow, msg).catch(err => {
-          pushLog('ERROR', 'WA→Signal відправка провалена', { error: err.message, stack: err.stack });
+          pushLog('ERROR', 'WA→Signal відправка провалена', {
+            flowId: flow.id,
+            error: err.message,
+            status: err?.signalContext?.status ?? null,
+            body: err?.signalContext?.body ?? null,
+            stack: err.stack
+          });
           bumpFlowStat(flow.id, 'errors');
         }));
         return;
